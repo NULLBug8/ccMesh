@@ -37,11 +37,11 @@
 4,M3,P4-7,健康检查与 API Key 脱敏命令,Rust,"P1-1","53, 54, 55",已完成,,2026-06-05,2026-06-05,get_health 脱敏端点列表；mask_api_key 单测
 4,M3,P4-8,Token 计数命令,Rust,"P0-2","56, 57, 58",已完成,,2026-06-05,2026-06-05,estimate_input_tokens（中文比率自适应）+ count_tokens；单测
 4,M3,P4-9,日志命令与实时推送,Rust,"P0-6, P4-2","76, 77",已完成,,2026-06-05,2026-06-05,tracing CaptureLayer→环形缓冲+log-line 事件；get_recent_logs/set_log_level
-5,M4,P5-1,WebDAV 客户端封装,Rust,"P0-2","31, 35, 36",待开始,,,,
-5,M4,P5-2,连接测试命令,Rust,"P5-1","37",待开始,,,,
-5,M4,P5-3,备份/恢复与元数据,Rust,"P5-1, P0-4","33, 34, 35, 36, 38",待开始,,,,
-5,M4,P5-4,配置/统计同步与设备过滤,Rust,"P5-3, P4-1, P0-5","31, 32, 39",待开始,,,,
-5,M4,P5-5,WebDAV 前端,React,"P5-2, P5-3, P5-4, P0-8","31-39",待开始,,,,
+5,M4,P5-1,WebDAV 客户端封装,Rust,"P0-2","31, 35, 36",已完成,,2026-06-05,2026-06-05,reqwest_dav 封装：connect/test/put/get/list/delete
+5,M4,P5-2,连接测试命令,Rust,"P5-1","37",已完成,,2026-06-05,2026-06-05,test_webdav（接收待测配置，list 根探测）
+5,M4,P5-3,备份/恢复与元数据,Rust,"P5-1, P0-4","33, 34, 35, 36, 38",已完成,,2026-06-05,2026-06-05,VACUUM INTO 副本+脱敏；上传 .db+.meta.json；list/delete；需 WebDAV stub 实测
+5,M4,P5-4,配置/统计同步与设备过滤,Rust,"P5-3, P4-1, P0-5","31, 32, 39",已完成,,2026-06-05,2026-06-05,ATTACH 合并：安全键 config、endpoints、daily_stats 重打本地 device_id 聚合
+5,M4,P5-5,WebDAV 前端,React,"P5-2, P5-3, P5-4, P0-8","31-39",已完成,,2026-06-05,2026-06-05,Sync 页：WebdavForm（测试/保存）+ BackupList（备份/恢复/删除）；pnpm build 通过
 6,M4,P6-1,系统托盘,Rust,"P0-6, P4-2","40, 41, 42, 43",待开始,,,,
 6,M4,P6-2,窗口关闭行为,Rust + React,"P6-1, P4-2","44",待开始,,,,
 6,M4,P6-3,多主题与 token 定义,React,"P4-2, P0-8","45",待开始,,,,

@@ -85,7 +85,12 @@ pub fn run() {
             commands::models::get_models,
             commands::tokens::count_tokens,
             commands::logs::get_recent_logs,
-            commands::logs::set_log_level
+            commands::logs::set_log_level,
+            commands::webdav::test_webdav,
+            commands::webdav::webdav_backup,
+            commands::webdav::webdav_restore,
+            commands::webdav::webdav_list_backups,
+            commands::webdav::webdav_delete_backup
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
