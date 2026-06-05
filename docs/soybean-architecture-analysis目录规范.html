@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Soybean Admin — Views & Components 架构分析</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=DM+Serif+Display&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg: #0d0f12;
+    --bg-card: #141720;
+    --bg-code: #0a0c0f;
+    --border: rgba(255,255,255,0.07);
+    --border-accent: rgba(99,179,237,0.25);
+    --text: #c9d1e0;
+    --text-dim: #6b7693;
+    --text-bright: #eef2ff;
+    --accent: #63b3ed;
+    --accent2: #68d391;
+    --accent3: #f6ad55;
+    --accent4: #fc8181;
+    --accent5: #b794f4;
+    --tag-bg: rgba(99,179,237,0.08);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    font-size: 15px;
+  }
+
+  /* ── HEADER ── */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 3.5rem 0 2.5rem;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  header::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse 60% 80% at 50% 0%, rgba(99,179,237,0.07) 0%, transparent 70%);
+  }
+  .header-tag {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    border: 1px solid var(--border-accent);
+    padding: 4px 12px;
+    border-radius: 20px;
+    margin-bottom: 1.2rem;
+  }
+  h1 {
+    font-family: 'DM Serif Display', serif;
+    font-size: clamp(2rem, 4vw, 3rem);
+    font-weight: 400;
+    color: var(--text-bright);
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    margin-bottom: 1rem;
+  }
+  .subtitle {
+    color: var(--text-dim);
+    font-size: 14px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ── LAYOUT ── */
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 2rem;
+  }
+  section {
+    padding: 3rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  section:last-child { border-bottom: none; }
+
+  /* ── TYPOGRAPHY ── */
+  h2 {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1.7rem;
+    font-weight: 400;
+    color: var(--text-bright);
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  h2 .num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    background: var(--tag-bg);
+    border: 1px solid var(--border-accent);
+    padding: 2px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.05em;
+  }
+  h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-bright);
+    margin: 1.8rem 0 0.8rem;
+    letter-spacing: 0.01em;
+  }
+  p { margin-bottom: 1rem; color: var(--text); }
+
+  /* ── CODE BLOCKS ── */
+  pre {
+    background: var(--bg-code);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.2rem 1.4rem;
+    overflow-x: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px;
+    line-height: 1.8;
+    margin: 1rem 0 1.5rem;
+    position: relative;
+  }
+  pre .lang-tag {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    font-size: 10px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px;
+    background: rgba(255,255,255,0.05);
+    padding: 1px 6px;
+    border-radius: 3px;
+    color: var(--accent);
+  }
+  pre code { background: none; padding: 0; font-size: inherit; color: inherit; }
+
+  /* syntax highlight via spans */
+  .kw { color: #b794f4; }      /* keyword */
+  .fn { color: #63b3ed; }      /* function/import name */
+  .str { color: #68d391; }     /* string */
+  .cmt { color: #4a5568; font-style: italic; }  /* comment */
+  .punc { color: #718096; }    /* punctuation */
+  .path { color: #f6ad55; }    /* path */
+  .comp { color: #fc8181; }    /* component name */
+  .attr { color: #63b3ed; }    /* attribute */
+  .tag { color: #b794f4; }     /* html tag */
+
+  /* ── COMPARISON TABLE ── */
+  .table-wrap { overflow-x: auto; margin: 1.2rem 0; border-radius: 8px; border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    background: rgba(255,255,255,0.04);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  td {
+    padding: 10px 14px;
+    font-size: 13.5px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.015); }
+  td:first-child { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--accent); }
+
+  /* ── CALLOUT BOXES ── */
+  .callout {
+    border-left: 3px solid var(--accent);
+    background: rgba(99,179,237,0.05);
+    border-radius: 0 6px 6px 0;
+    padding: 1rem 1.2rem;
+    margin: 1.2rem 0;
+    font-size: 14px;
+  }
+  .callout.green { border-color: var(--accent2); background: rgba(104,211,145,0.05); }
+  .callout.amber { border-color: var(--accent3); background: rgba(246,173,85,0.05); }
+  .callout.red   { border-color: var(--accent4); background: rgba(252,129,129,0.05); }
+  .callout strong { color: var(--text-bright); }
+
+  /* ── GRID CARDS ── */
+  .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 1.2rem 0; }
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.1rem 1.2rem;
+  }
+  .card-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--accent);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .card p { font-size: 13.5px; margin: 0; color: var(--text); }
+
+  /* ── TAGS ── */
+  .tag-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 0.5rem 0 1rem; }
+  .pill {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    border: 1px solid;
+  }
+  .pill.blue   { color: var(--accent);  border-color: rgba(99,179,237,0.3);  background: rgba(99,179,237,0.06); }
+  .pill.green  { color: var(--accent2); border-color: rgba(104,211,145,0.3); background: rgba(104,211,145,0.06); }
+  .pill.amber  { color: var(--accent3); border-color: rgba(246,173,85,0.3);  background: rgba(246,173,85,0.06); }
+  .pill.purple { color: var(--accent5); border-color: rgba(183,148,244,0.3); background: rgba(183,148,244,0.06); }
+
+  /* ── DIR TREE ── */
+  .tree {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px;
+    line-height: 2;
+    background: var(--bg-code);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.2rem 1.5rem;
+    margin: 1rem 0 1.5rem;
+  }
+  .tree .dir  { color: var(--accent); }
+  .tree .file { color: var(--text); }
+  .tree .note { color: var(--text-dim); font-style: italic; }
+  .tree .highlight { color: var(--accent3); }
+
+  /* ── DIFF BLOCK ── */
+  .diff {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin: 1rem 0 1.5rem;
+  }
+  @media (max-width: 680px) { .diff { grid-template-columns: 1fr; } }
+  .diff-col { }
+  .diff-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 4px 10px;
+    border-radius: 4px 4px 0 0;
+    font-weight: 500;
+  }
+  .diff-label.vue   { background: rgba(104,211,145,0.12); color: var(--accent2); }
+  .diff-label.react { background: rgba(99,179,237,0.12);  color: var(--accent);  }
+  .diff pre { margin: 0; border-radius: 0 0 8px 8px; }
+
+  /* ── TOC ── */
+  .toc {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.2rem 1.5rem;
+    margin: 2rem 0;
+  }
+  .toc-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+  }
+  .toc ol { padding-left: 1.2rem; }
+  .toc li { font-size: 13.5px; margin-bottom: 4px; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+
+  footer {
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    border-top: 1px solid var(--border);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <div class="header-tag">架构分析报告 · 2025</div>
+    <h1>Soybean Admin<br>Views & Components 设计解析</h1>
+    <p class="subtitle">git clone https://github.com/soybeanjs/soybean-admin.git · 源码实证分析</p>
+  </div>
+</header>
+
+<div class="container">
+
+  <div class="toc">
+    <div class="toc-title">目录</div>
+    <ol>
+      <li><a href="#s1">整体目录结构总览</a></li>
+      <li><a href="#s2">views 的设计模式：页面 + modules 双层结构</a></li>
+      <li><a href="#s3">components 的三级分类体系</a></li>
+      <li><a href="#s4">命名风格：文件、组件、Props</a></li>
+      <li><a href="#s5">组件导入方式：自动导入 vs 显式导入</a></li>
+      <li><a href="#s6">页面与组件的协作关系图</a></li>
+      <li><a href="#s7">迁移到 React：目录组织如何重构</a></li>
+      <li><a href="#s8">React 版关键代码对照</a></li>
+    </ol>
+  </div>
+
+  <!-- ─────────────────────────────── S1 ─────────────────────────────── -->
+  <section id="s1">
+    <h2><span class="num">01</span> 整体目录结构总览</h2>
+
+    <p>克隆后 <code>src/</code> 目录呈现出清晰的职责分层，<code>views</code> 和 <code>components</code> 是两个完全不同性质的层：</p>
+
+    <div class="tree">
+<span class="dir">src/</span><br>
+├── <span class="dir">views/</span>          <span class="note"># 路由页面（每个目录 = 一个路由）</span><br>
+│   ├── <span class="dir">_builtin/</span>   <span class="note"># 框架内置页（login / 403 / 404 / 500）</span><br>
+│   │   ├── <span class="dir">login/</span><br>
+│   │   │   ├── <span class="file">index.vue</span>       <span class="note"># 页面入口，负责组装</span><br>
+│   │   │   └── <span class="dir">modules/</span>        <span class="note"># 页面私有子模块</span><br>
+│   │   │       ├── <span class="file">pwd-login.vue</span><br>
+│   │   │       ├── <span class="file">code-login.vue</span><br>
+│   │   │       ├── <span class="file">register.vue</span><br>
+│   │   │       ├── <span class="file">reset-pwd.vue</span><br>
+│   │   │       └── <span class="file">bind-wechat.vue</span><br>
+│   │   └── <span class="dir">403/ 404/ 500/ iframe-page/</span><br>
+│   └── <span class="dir">home/</span><br>
+│       ├── <span class="file">index.vue</span>           <span class="note"># 页面入口</span><br>
+│       └── <span class="dir">modules/</span><br>
+│           ├── <span class="file">header-banner.vue</span><br>
+│           ├── <span class="file">card-data.vue</span><br>
+│           ├── <span class="file">line-chart.vue</span><br>
+│           ├── <span class="file">pie-chart.vue</span><br>
+│           ├── <span class="file">project-news.vue</span><br>
+│           └── <span class="file">creativity-banner.vue</span><br>
+│<br>
+├── <span class="dir">components/</span>     <span class="note"># 跨页面通用组件（全局共享）</span><br>
+│   ├── <span class="dir">common/</span>     <span class="note"># 业务无关基础功能组件</span><br>
+│   │   ├── <span class="file">app-provider.vue</span><br>
+│   │   ├── <span class="file">full-screen.vue</span><br>
+│   │   ├── <span class="file">lang-switch.vue</span><br>
+│   │   ├── <span class="file">system-logo.vue</span><br>
+│   │   └── <span class="file">theme-schema-switch.vue</span><br>
+│   ├── <span class="dir">custom/</span>     <span class="note"># 项目专属 UI 增强组件</span><br>
+│   │   ├── <span class="file">svg-icon.vue</span><br>
+│   │   ├── <span class="file">button-icon.vue</span><br>
+│   │   ├── <span class="file">count-to.vue</span><br>
+│   │   ├── <span class="file">wave-bg.vue</span><br>
+│   │   └── <span class="file">better-scroll.vue</span><br>
+│   └── <span class="dir">advanced/</span>   <span class="note"># 复杂业务组件（含较多逻辑）</span><br>
+│       ├── <span class="file">table-column-setting.vue</span><br>
+│       └── <span class="file">table-header-operation.vue</span><br>
+│<br>
+├── <span class="dir">layouts/</span>    <span class="note"># 布局骨架（不算 views 也不算 components）</span><br>
+├── <span class="dir">hooks/</span>      <span class="note"># 组合式函数</span><br>
+├── <span class="dir">store/</span>      <span class="note"># Pinia 状态模块</span><br>
+├── <span class="dir">service/</span>    <span class="note"># API 请求封装</span><br>
+└── <span class="dir">router/</span>     <span class="note"># 路由定义 + 权限守卫</span>
+    </div>
+
+    <div class="callout">
+      <strong>核心原则：</strong> <code>views/</code> 是路由的归属地，组件只服务于所在页面；<code>components/</code> 是真正的"公共资产"，任何页面都能用。两者不混放。
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────── S2 ─────────────────────────────── -->
+  <section id="s2">
+    <h2><span class="num">02</span> views 的设计模式：页面 + modules 双层结构</h2>
+
+    <p>每个路由页面都遵循相同的两层结构：</p>
+
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-title">第一层 — index.vue</div>
+        <p>页面的"导演"。只负责布局编排：从 <code>modules/</code> 导入子模块，用 Grid/Space 组织位置关系，从 store 取顶层数据（如 isMobile），不包含具体业务逻辑。</p>
+      </div>
+      <div class="card">
+        <div class="card-title">第二层 — modules/*.vue</div>
+        <p>页面的"演员"。每个文件是一个有明确业务含义的独立区块，自带数据获取、状态、渲染逻辑。私有于该页面，不对外暴露。</p>
+      </div>
+    </div>
+
+    <h3>home/index.vue 的职责（纯组装）</h3>
+    <pre><span class="cmt">// home/index.vue — 只做两件事：导入子模块 + 排版</span>
+<span class="kw">import</span> HeaderBanner <span class="kw">from</span> <span class="str">'./modules/header-banner.vue'</span>;
+<span class="kw">import</span> CardData     <span class="kw">from</span> <span class="str">'./modules/card-data.vue'</span>;
+<span class="kw">import</span> LineChart    <span class="kw">from</span> <span class="str">'./modules/line-chart.vue'</span>;
+<span class="kw">import</span> PieChart     <span class="kw">from</span> <span class="str">'./modules/pie-chart.vue'</span>;
+<span class="kw">import</span> ProjectNews  <span class="kw">from</span> <span class="str">'./modules/project-news.vue'</span>;
+<span class="kw">import</span> CreativityBanner <span class="kw">from</span> <span class="str">'./modules/creativity-banner.vue'</span>;
+
+<span class="cmt">// 模板只写布局，没有任何业务数据</span>
+<span class="tag">&lt;NSpace</span> <span class="attr">vertical</span> <span class="attr">:size</span>=<span class="str">"16"</span><span class="tag">&gt;</span>
+  <span class="tag">&lt;HeaderBanner /&gt;</span>
+  <span class="tag">&lt;CardData /&gt;</span>
+  <span class="tag">&lt;NGrid&gt;</span>
+    <span class="tag">&lt;NGi&gt;&lt;LineChart /&gt;&lt;/NGi&gt;</span>
+    <span class="tag">&lt;NGi&gt;&lt;PieChart /&gt;&lt;/NGi&gt;</span>
+  <span class="tag">&lt;/NGrid&gt;</span>
+<span class="tag">&lt;/NSpace&gt;</span><span class="lang-tag">vue</span></pre>
+
+    <h3>login/index.vue 的"动态模块"模式</h3>
+    <p>Login 页更进一步：将所有子模块放入 <code>moduleMap</code>，通过 <code>&lt;component :is="..."&gt;</code> 动态渲染，实现"同 URL、不同视图"的切换（密码登录 → 注册 → 找回密码），避免路由跳转。</p>
+
+    <pre><span class="kw">const</span> moduleMap: <span class="fn">Record</span>&lt;LoginModule, <span class="punc">{</span> label; component <span class="punc">}</span>&gt; <span class="punc">=</span> <span class="punc">{</span>
+  <span class="str">'pwd-login'</span>:  <span class="punc">{</span> label: ..., component: PwdLogin  <span class="punc">}</span>,
+  <span class="str">'code-login'</span>: <span class="punc">{</span> label: ..., component: CodeLogin <span class="punc">}</span>,
+  <span class="str">'register'</span>:   <span class="punc">{</span> label: ..., component: Register  <span class="punc">}</span>,
+  <span class="str">'reset-pwd'</span>:  <span class="punc">{</span> label: ..., component: ResetPwd  <span class="punc">}</span>,
+<span class="punc">}</span>;
+
+<span class="cmt">// 模板中动态渲染当前模块</span>
+<span class="tag">&lt;component :is=</span><span class="str">"activeModule.component"</span> <span class="tag">/&gt;</span><span class="lang-tag">vue</span></pre>
+
+    <div class="callout green">
+      <strong>规律总结：</strong> modules/ 里的组件是"页面私有组件"，和 components/ 里的"全局组件"本质区别在于——能否被其他页面复用。不能复用的放 modules/，可复用的才提升到 components/。
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────── S3 ─────────────────────────────── -->
+  <section id="s3">
+    <h2><span class="num">03</span> components 的三级分类体系</h2>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>目录</th>
+            <th>定位</th>
+            <th>特征</th>
+            <th>典型文件</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>common/</td>
+            <td>基础功能层</td>
+            <td>业务无关；封装系统级行为（全屏、多语言、主题切换）；Props 简洁；通常无副作用</td>
+            <td>full-screen.vue<br>lang-switch.vue<br>system-logo.vue</td>
+          </tr>
+          <tr>
+            <td>custom/</td>
+            <td>UI 增强层</td>
+            <td>项目专属视觉组件；封装第三方库（BetterScroll、ECharts、Iconify）；具备动画/特效</td>
+            <td>svg-icon.vue<br>count-to.vue<br>wave-bg.vue</td>
+          </tr>
+          <tr>
+            <td>advanced/</td>
+            <td>业务复合层</td>
+            <td>有较重业务逻辑；通常是某类场景的整体解决方案（表格操作区、列设置）；含 emit / defineModel</td>
+            <td>table-header-operation.vue<br>table-column-setting.vue</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>common 组件的特征</h3>
+    <p>以 <code>full-screen.vue</code> 为例，完全无副作用，Props 只有一个布尔值，纯 UI 呈现：</p>
+    <pre><span class="cmt">// full-screen.vue — 只接收状态，不产生副作用</span>
+<span class="kw">interface</span> Props <span class="punc">{</span> full?: boolean <span class="punc">}</span>
+<span class="fn">defineProps</span>&lt;Props&gt;();
+
+<span class="cmt">// 模板：根据 props 显示不同图标</span>
+<span class="tag">&lt;ButtonIcon :tooltip-content=</span><span class="str">"full ? '退出' : '全屏'"</span><span class="tag">&gt;</span>
+  <span class="tag">&lt;icon-gridicons-fullscreen-exit</span> <span class="attr">v-if</span>=<span class="str">"full"</span> <span class="tag">/&gt;</span>
+  <span class="tag">&lt;icon-gridicons-fullscreen</span> <span class="attr">v-else</span> <span class="tag">/&gt;</span>
+<span class="tag">&lt;/ButtonIcon&gt;</span><span class="lang-tag">vue</span></pre>
+
+    <h3>advanced 组件的特征</h3>
+    <p><code>table-header-operation.vue</code> 是一个"整合组件"：内含 3 个 emit 事件、1 个 defineModel 双向绑定、条件禁用逻辑，是真正的业务层组件。</p>
+    <pre><span class="cmt">// table-header-operation.vue — 有逻辑 + 有通信</span>
+<span class="kw">interface</span> Emits <span class="punc">{</span>
+  <span class="punc">(</span>e: <span class="str">'add'</span><span class="punc">)</span>: void;
+  <span class="punc">(</span>e: <span class="str">'delete'</span><span class="punc">)</span>: void;
+  <span class="punc">(</span>e: <span class="str">'refresh'</span><span class="punc">)</span>: void;
+<span class="punc">}</span>
+<span class="kw">const</span> columns <span class="punc">=</span> <span class="fn">defineModel</span>&lt;TableColumnCheck[]&gt;<span class="punc">(</span><span class="str">'columns'</span>, <span class="punc">{</span> default: () => [] <span class="punc">}</span><span class="punc">)</span>;<span class="lang-tag">vue</span></pre>
+  </section>
+
+  <!-- ─────────────────────────────── S4 ─────────────────────────────── -->
+  <section id="s4">
+    <h2><span class="num">04</span> 命名风格：文件、组件、Props</h2>
+
+    <h3>文件名：全部 kebab-case（短横线小写）</h3>
+    <div class="tag-row">
+      <span class="pill green">card-data.vue</span>
+      <span class="pill green">header-banner.vue</span>
+      <span class="pill green">pwd-login.vue</span>
+      <span class="pill green">table-column-setting.vue</span>
+      <span class="pill green">dark-mode-container.vue</span>
+    </div>
+    <p>无一例外，所有 <code>.vue</code> 文件使用 kebab-case，与 HTML 标签风格一致，避免大小写在不同操作系统文件系统上的歧义。</p>
+
+    <h3>组件 name：PascalCase（大驼峰）</h3>
+    <p>每个组件都通过 <code>defineOptions({ name: '...' })</code> 显式声明 PascalCase 名称，且严格与文件名对应（kebab ↔ pascal）：</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>文件名</th><th>defineOptions name</th><th>模板中使用</th></tr></thead>
+        <tbody>
+          <tr><td>card-data.vue</td><td>CardData</td><td>&lt;CardData /&gt;</td></tr>
+          <tr><td>header-banner.vue</td><td>HeaderBanner</td><td>&lt;HeaderBanner /&gt;</td></tr>
+          <tr><td>pwd-login.vue</td><td>PwdLogin</td><td>&lt;PwdLogin /&gt;</td></tr>
+          <tr><td>system-logo.vue</td><td>SystemLogo</td><td>&lt;SystemLogo /&gt;</td></tr>
+          <tr><td>svg-icon.vue</td><td>SvgIcon</td><td>&lt;SvgIcon /&gt;</td></tr>
+          <tr><td>count-to.vue</td><td>CountTo</td><td>&lt;CountTo /&gt;</td></tr>
+          <tr><td>button-icon.vue</td><td>ButtonIcon</td><td>&lt;ButtonIcon /&gt;</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Props 命名：camelCase 定义，kebab-case 使用</h3>
+    <pre><span class="cmt">// 定义：camelCase</span>
+<span class="kw">interface</span> Props <span class="punc">{</span>
+  themeSchema: UnionKey.ThemeScheme;   <span class="cmt">// themeSchema</span>
+  showTooltip?: boolean;               <span class="cmt">// showTooltip</span>
+  tooltipPlacement?: PopoverPlacement; <span class="cmt">// tooltipPlacement</span>
+<span class="punc">}</span>
+
+<span class="cmt">// 使用：kebab-case（Vue 自动转换）</span>
+<span class="tag">&lt;ThemeSchemaSwitch</span>
+  <span class="attr">:theme-schema</span>=<span class="str">"themeStore.themeScheme"</span>
+  <span class="attr">:show-tooltip</span>=<span class="str">"false"</span>
+<span class="tag">/&gt;</span><span class="lang-tag">vue</span></pre>
+
+    <h3>emit 事件：camelCase</h3>
+    <pre><span class="kw">interface</span> Emits <span class="punc">{</span>
+  <span class="punc">(</span>e: <span class="str">'add'</span><span class="punc">)</span>: void;
+  <span class="punc">(</span>e: <span class="str">'delete'</span><span class="punc">)</span>: void;
+  <span class="punc">(</span>e: <span class="str">'changeLocale'</span>, lang: string<span class="punc">)</span>: void;  <span class="cmt">// camelCase</span>
+<span class="punc">}</span><span class="lang-tag">ts</span></pre>
+
+    <div class="callout amber">
+      <strong>命名规律：</strong> 文件 kebab-case → 组件名 PascalCase → Props camelCase（模板中 kebab）→ Emit camelCase。整条链路非常一致，Vue 官方推荐风格。
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────── S5 ─────────────────────────────── -->
+  <section id="s5">
+    <h2><span class="num">05</span> 组件导入方式：自动导入 vs 显式导入</h2>
+
+    <p>Soybean Admin 用了两种截然不同的导入策略，分别对应不同的组件层级：</p>
+
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-title">策略 A — 自动导入（unplugin-vue-components）</div>
+        <p><code>components/</code> 下的所有组件 + NaiveUI 组件 + Iconify 图标，由 Vite 插件在编译时扫描并注册为全局组件。模板中<strong>直接使用，无需 import</strong>。</p>
+      </div>
+      <div class="card">
+        <div class="card-title">策略 B — 显式 import（相对路径）</div>
+        <p><code>views/*/modules/</code> 下的页面私有组件，必须在 <code>index.vue</code> 的 <code>&lt;script setup&gt;</code> 中用相对路径显式导入。体现"私有性"。</p>
+      </div>
+    </div>
+
+    <h3>自动导入配置（build/plugins/unplugin.ts）</h3>
+    <pre><span class="fn">Components</span><span class="punc">({</span>
+  dts: <span class="str">'src/typings/components.d.ts'</span>,  <span class="cmt">// 生成类型声明</span>
+  resolvers: <span class="punc">[</span>
+    <span class="fn">NaiveUiResolver</span><span class="punc">()</span>,               <span class="cmt">// NaiveUI 组件自动导入</span>
+    <span class="fn">IconsResolver</span><span class="punc">({</span>
+      customCollections: <span class="punc">[</span>collectionName<span class="punc">]</span>,
+      componentPrefix: VITE_ICON_PREFIX  <span class="cmt">// 图标组件自动导入</span>
+    <span class="punc">})</span>
+  <span class="punc">]</span>
+<span class="punc">})</span><span class="lang-tag">ts</span></pre>
+
+    <p>自动生成的 <code>components.d.ts</code> 会声明所有全局组件类型，让 TypeScript 知道 <code>&lt;SvgIcon&gt;</code>、<code>&lt;CountTo&gt;</code>、<code>&lt;NButton&gt;</code> 这些组件的存在。</p>
+
+    <h3>两种导入在代码中的对比</h3>
+    <pre><span class="cmt">// ─ home/index.vue ────────────────────────────────────────</span>
+<span class="kw">import</span> HeaderBanner <span class="kw">from</span> <span class="str">'./modules/header-banner.vue'</span>; <span class="cmt">// ← 显式导入（私有模块）</span>
+<span class="kw">import</span> CardData     <span class="kw">from</span> <span class="str">'./modules/card-data.vue'</span>;     <span class="cmt">// ← 显式导入（私有模块）</span>
+
+<span class="cmt">// 模板中可以直接用（自动导入，无需 import）：</span>
+<span class="tag">&lt;SvgIcon /&gt;</span>        <span class="cmt">// components/custom/svg-icon.vue</span>
+<span class="tag">&lt;CountTo /&gt;</span>        <span class="cmt">// components/custom/count-to.vue</span>
+<span class="tag">&lt;NCard /&gt;</span>          <span class="cmt">// NaiveUI 组件</span>
+<span class="tag">&lt;NGrid /&gt;</span>          <span class="cmt">// NaiveUI 组件</span>
+<span class="tag">&lt;SoybeanAvatar /&gt;</span>  <span class="cmt">// components/custom/soybean-avatar.vue</span><span class="lang-tag">vue</span></pre>
+
+    <div class="callout">
+      <strong>关键区分：</strong> 是否需要写 <code>import</code> 就是区分"全局组件"和"私有模块"的直接标志。需要显式 import 的，是只属于该页面的 modules；不需要 import 就能用的，是全局注册的 components。
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────── S6 ─────────────────────────────── -->
+  <section id="s6">
+    <h2><span class="num">06</span> 页面与组件的协作关系</h2>
+
+    <p>从源码归纳出以下协作层次：</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>层次</th><th>位置</th><th>职责</th><th>使用的组件</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>路由页面<br>(views/*/index.vue)</td>
+            <td>views/</td>
+            <td>组装子模块，读取顶层 store，布局排版</td>
+            <td>modules/* (显式 import)<br>全局组件 (自动导入)</td>
+          </tr>
+          <tr>
+            <td>页面私有模块<br>(views/*/modules/*.vue)</td>
+            <td>views/*/modules/</td>
+            <td>独立业务区块，自带数据/状态，有 defineOptions name</td>
+            <td>全局 components (自动导入)<br>UI 库组件 (NaiveUI)</td>
+          </tr>
+          <tr>
+            <td>全局通用组件<br>(components/common/)</td>
+            <td>components/</td>
+            <td>系统级功能封装，Props 驱动，无副作用</td>
+            <td>UI 库 + 图标</td>
+          </tr>
+          <tr>
+            <td>全局 UI 组件<br>(components/custom/)</td>
+            <td>components/</td>
+            <td>视觉增强，封装第三方（ECharts/Iconify）</td>
+            <td>第三方库</td>
+          </tr>
+          <tr>
+            <td>全局业务组件<br>(components/advanced/)</td>
+            <td>components/</td>
+            <td>跨页面业务复合体，有 emit/defineModel</td>
+            <td>common + custom + UI 库</td>
+          </tr>
+          <tr>
+            <td>布局组件<br>(layouts/)</td>
+            <td>layouts/</td>
+            <td>页面骨架（侧边栏/顶栏/标签页），独立于业务</td>
+            <td>components/* + UI 库</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────── S7 ─────────────────────────────── -->
+  <section id="s7">
+    <h2><span class="num">07</span> 迁移到 React：目录组织如何重构</h2>
+
+    <p>Vue 的 <code>views/</code> + <code>modules/</code> + <code>components/</code> 三层结构在 React 中需要做几处关键转换：</p>
+
+    <h3>差异对照表</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Vue 版（Soybean）</th><th>React 版对应做法</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>views/*/index.vue</td>
+            <td>pages/*/index.tsx</td>
+            <td>目录名从 views → pages（React 生态更通用）</td>
+          </tr>
+          <tr>
+            <td>views/*/modules/*.vue</td>
+            <td>pages/*/_components/*.tsx</td>
+            <td>用 _ 前缀或 components/ 子目录表示私有，Next.js 风格</td>
+          </tr>
+          <tr>
+            <td>components/common/</td>
+            <td>components/common/</td>
+            <td>结构相同，扩展名 .tsx</td>
+          </tr>
+          <tr>
+            <td>components/custom/</td>
+            <td>components/ui/ 或 components/shared/</td>
+            <td>shadcn/ui 风格叫 ui/，通用增强叫 shared/</td>
+          </tr>
+          <tr>
+            <td>components/advanced/</td>
+            <td>components/business/ 或 features/*/components/</td>
+            <td>如采用 Feature Sliced Design，拆到 features/ 下</td>
+          </tr>
+          <tr>
+            <td>defineOptions({ name })</td>
+            <td>函数名即组件名（天然具名）</td>
+            <td>React 函数组件名 = displayName，无需额外声明</td>
+          </tr>
+          <tr>
+            <td>unplugin-vue-components 自动导入</td>
+            <td>全部显式 import（无自动导入）</td>
+            <td>React 生态无等价方案，靠 barrel export (index.ts)</td>
+          </tr>
+          <tr>
+            <td>kebab-case 文件名</td>
+            <td>PascalCase 文件名</td>
+            <td>React 约定：组件文件用 PascalCase</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>React 版推荐目录结构</h3>
+    <div class="tree">
+<span class="dir">src/</span><br>
+├── <span class="dir">pages/</span>               <span class="note"># ← Vue 的 views/</span><br>
+│   ├── <span class="dir">_builtin/</span><br>
+│   │   └── <span class="dir">login/</span><br>
+│   │       ├── <span class="file highlight">index.tsx</span>         <span class="note"># 页面入口（组装层）</span><br>
+│   │       └── <span class="dir highlight">_components/</span>     <span class="note"># ← Vue 的 modules/（下划线=私有）</span><br>
+│   │           ├── <span class="file">PwdLoginForm.tsx</span><br>
+│   │           ├── <span class="file">CodeLoginForm.tsx</span><br>
+│   │           └── <span class="file">RegisterForm.tsx</span><br>
+│   └── <span class="dir">home/</span><br>
+│       ├── <span class="file">index.tsx</span><br>
+│       └── <span class="dir">_components/</span><br>
+│           ├── <span class="file">HeaderBanner.tsx</span><br>
+│           ├── <span class="file">CardData.tsx</span><br>
+│           ├── <span class="file">LineChart.tsx</span><br>
+│           └── <span class="file">ProjectNews.tsx</span><br>
+│<br>
+├── <span class="dir">components/</span>          <span class="note"># 跨页面全局组件</span><br>
+│   ├── <span class="dir">common/</span>          <span class="note"># ← 对应 Vue 的 common/（系统功能）</span><br>
+│   │   ├── <span class="file">AppProvider.tsx</span><br>
+│   │   ├── <span class="file">FullScreen.tsx</span><br>
+│   │   └── <span class="file">SystemLogo.tsx</span><br>
+│   ├── <span class="dir">ui/</span>              <span class="note"># ← 对应 Vue 的 custom/（视觉增强）</span><br>
+│   │   ├── <span class="file">SvgIcon.tsx</span><br>
+│   │   ├── <span class="file">CountTo.tsx</span><br>
+│   │   └── <span class="file">WaveBg.tsx</span><br>
+│   └── <span class="dir">business/</span>        <span class="note"># ← 对应 Vue 的 advanced/（业务复合）</span><br>
+│       ├── <span class="file">TableHeaderOps.tsx</span><br>
+│       └── <span class="file">TableColumnSetting.tsx</span><br>
+│<br>
+├── <span class="dir">layouts/</span><br>
+├── <span class="dir">hooks/</span>               <span class="note"># Vue hooks → React custom hooks</span><br>
+├── <span class="dir">store/</span>               <span class="note"># Pinia → Zustand / Redux Toolkit</span><br>
+├── <span class="dir">services/</span>            <span class="note"># Vue service → React services（或 api/）</span><br>
+└── <span class="dir">router/</span>              <span class="note"># 路由 + 权限守卫</span>
+    </div>
+
+    <h3>关于 barrel export（index.ts）</h3>
+    <p>React 没有自动导入，但可以用 <code>index.ts</code> 聚合导出，模拟"按需使用"的便利性：</p>
+    <pre><span class="cmt">// components/common/index.ts</span>
+<span class="kw">export</span> <span class="punc">{</span> default <span class="kw">as</span> AppProvider     <span class="punc">}</span> <span class="kw">from</span> <span class="str">'./AppProvider'</span>;
+<span class="kw">export</span> <span class="punc">{</span> default <span class="kw">as</span> FullScreen       <span class="punc">}</span> <span class="kw">from</span> <span class="str">'./FullScreen'</span>;
+<span class="kw">export</span> <span class="punc">{</span> default <span class="kw">as</span> SystemLogo       <span class="punc">}</span> <span class="kw">from</span> <span class="str">'./SystemLogo'</span>;
+<span class="kw">export</span> <span class="punc">{</span> default <span class="kw">as</span> ThemeSchemaSwitch <span class="punc">}</span> <span class="kw">from</span> <span class="str">'./ThemeSchemaSwitch'</span>;
+
+<span class="cmt">// 使用方（页面）</span>
+<span class="kw">import</span> <span class="punc">{</span> FullScreen, SystemLogo <span class="punc">}</span> <span class="kw">from</span> <span class="str">'@/components/common'</span>;<span class="lang-tag">ts</span></pre>
+  </section>
+
+  <!-- ─────────────────────────────── S8 ─────────────────────────────── -->
+  <section id="s8">
+    <h2><span class="num">08</span> React 版关键代码对照</h2>
+
+    <h3>home/index.tsx — 页面组装层</h3>
+    <div class="diff">
+      <div class="diff-col">
+        <div class="diff-label vue">Vue 原版</div>
+        <pre><span class="kw">import</span> HeaderBanner <span class="kw">from</span>
+  <span class="str">'./modules/header-banner.vue'</span>;
+<span class="kw">import</span> CardData <span class="kw">from</span>
+  <span class="str">'./modules/card-data.vue'</span>;
+
+<span class="kw">const</span> appStore <span class="punc">=</span> <span class="fn">useAppStore</span><span class="punc">();</span>
+<span class="kw">const</span> gap <span class="punc">=</span> <span class="fn">computed</span><span class="punc">(()</span> <span class="punc">=></span>
+  appStore.isMobile <span class="punc">?</span> <span class="str">0</span> <span class="punc">:</span> <span class="str">16</span><span class="punc">);</span>
+
+<span class="cmt">// 模板</span>
+<span class="tag">&lt;NSpace vertical :size=</span><span class="str">"16"</span><span class="tag">&gt;</span>
+  <span class="tag">&lt;HeaderBanner /&gt;</span>
+  <span class="tag">&lt;CardData /&gt;</span>
+<span class="tag">&lt;/NSpace&gt;</span></pre>
+      </div>
+      <div class="diff-col">
+        <div class="diff-label react">React 版</div>
+        <pre><span class="kw">import</span> HeaderBanner <span class="kw">from</span>
+  <span class="str">'./_components/HeaderBanner'</span>;
+<span class="kw">import</span> CardData <span class="kw">from</span>
+  <span class="str">'./_components/CardData'</span>;
+
+<span class="kw">const</span> isMobile <span class="punc">=</span> <span class="fn">useAppStore</span><span class="punc">(</span>
+  s <span class="punc">=></span> s.isMobile<span class="punc">);</span>
+<span class="kw">const</span> gap <span class="punc">=</span> isMobile <span class="punc">?</span> <span class="str">0</span> <span class="punc">:</span> <span class="str">16</span>;
+
+<span class="cmt">// JSX</span>
+<span class="kw">return</span> <span class="punc">(</span>
+  <span class="tag">&lt;Space</span> <span class="attr">direction</span>=<span class="str">"vertical"</span>
+    <span class="attr">size</span>=<span class="punc">{</span><span class="str">16</span><span class="punc">}</span><span class="tag">&gt;</span>
+    <span class="tag">&lt;HeaderBanner /&gt;</span>
+    <span class="tag">&lt;CardData /&gt;</span>
+  <span class="tag">&lt;/Space&gt;</span>
+<span class="punc">)</span></pre>
+      </div>
+    </div>
+
+    <h3>CardData.tsx — 页面私有模块（React 版）</h3>
+    <pre><span class="cmt">// pages/home/_components/CardData.tsx</span>
+<span class="cmt">// ← 文件名 PascalCase（React 约定）</span>
+<span class="cmt">// ← 放在 _components/ 下（私有于 home 页面）</span>
+
+<span class="kw">interface</span> CardItem <span class="punc">{</span>
+  key: string;
+  title: string;
+  value: number;
+  color: <span class="punc">{</span> start: string; end: string <span class="punc">}</span>;
+  icon: string;
+<span class="punc">}</span>
+
+<span class="kw">const</span> <span class="fn">CardData</span> <span class="punc">=</span> <span class="punc">()</span> <span class="punc">=></span> <span class="punc">{</span>
+  <span class="kw">const</span> <span class="punc">{</span> t <span class="punc">}</span> <span class="punc">=</span> <span class="fn">useTranslation</span><span class="punc">();</span>
+  <span class="cmt">// React 函数名本身就是 displayName，无需 defineOptions</span>
+
+  <span class="kw">const</span> cardData: CardItem[] <span class="punc">=</span> <span class="punc">[</span>
+    <span class="punc">{</span> key: <span class="str">'visitCount'</span>, title: <span class="fn">t</span><span class="punc">(</span><span class="str">'visitCount'</span><span class="punc">)</span>, ... <span class="punc">}</span>
+  <span class="punc">];</span>
+
+  <span class="kw">return</span> <span class="punc">(</span>
+    <span class="tag">&lt;Card&gt;</span>
+      <span class="punc">{</span>cardData.<span class="fn">map</span><span class="punc">(</span>item <span class="punc">=></span> <span class="punc">(</span>
+        <span class="tag">&lt;div</span> <span class="attr">key</span>=<span class="punc">{</span>item.key<span class="punc">}</span>
+          <span class="attr">style</span>=<span class="punc">{{</span>background: <span class="fn">gradient</span><span class="punc">(</span>item.color<span class="punc">)}}</span><span class="tag">&gt;</span>
+          <span class="tag">&lt;CountTo</span> <span class="attr">endValue</span>=<span class="punc">{</span>item.value<span class="punc">}</span> <span class="tag">/&gt;</span>
+        <span class="tag">&lt;/div&gt;</span>
+      <span class="punc">))}</span>
+    <span class="tag">&lt;/Card&gt;</span>
+  <span class="punc">);</span>
+<span class="punc">};</span>
+
+<span class="kw">export default</span> CardData;<span class="lang-tag">tsx</span></pre>
+
+    <h3>SvgIcon.tsx — 全局 UI 组件（React 版）</h3>
+    <pre><span class="cmt">// components/ui/SvgIcon.tsx</span>
+<span class="cmt">// ← 放在 components/ui/ 下（全局共享）</span>
+<span class="cmt">// ← 所有用到的地方都要显式 import（无自动导入）</span>
+
+<span class="kw">interface</span> Props <span class="punc">{</span>
+  icon?: string;        <span class="cmt">// Iconify 图标名</span>
+  localIcon?: string;   <span class="cmt">// 本地 SVG 图标</span>
+  className?: string;
+<span class="punc">}</span>
+
+<span class="kw">const</span> <span class="fn">SvgIcon</span> <span class="punc">=</span> <span class="punc">({</span> icon, localIcon, className <span class="punc">}:</span> Props<span class="punc">)</span> <span class="punc">=></span> <span class="punc">{</span>
+  <span class="kw">if</span> <span class="punc">(</span>localIcon<span class="punc">)</span> <span class="punc">{</span>
+    <span class="kw">return</span> <span class="tag">&lt;svg</span> <span class="attr">className</span>=<span class="punc">{</span>className<span class="punc">}</span><span class="tag">&gt;...</span><span class="tag">&lt;/svg&gt;</span>;
+  <span class="punc">}</span>
+  <span class="kw">return</span> <span class="tag">&lt;Icon</span> <span class="attr">icon</span>=<span class="punc">{</span>icon!<span class="punc">}</span> <span class="attr">className</span>=<span class="punc">{</span>className<span class="punc">}</span> <span class="tag">/&gt;</span>;
+<span class="punc">};</span>
+
+<span class="kw">export default</span> SvgIcon;<span class="lang-tag">tsx</span></pre>
+
+    <h3>命名规则总结（Vue → React）</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>维度</th><th>Vue (Soybean)</th><th>React 对应做法</th></tr></thead>
+        <tbody>
+          <tr><td>文件名</td><td>kebab-case（card-data.vue）</td><td>PascalCase（CardData.tsx）</td></tr>
+          <tr><td>组件显示名</td><td>defineOptions({ name: 'CardData' })</td><td>函数名 const CardData = () =&gt; ...</td></tr>
+          <tr><td>页面私有模块目录</td><td>views/page/modules/</td><td>pages/page/_components/</td></tr>
+          <tr><td>全局组件导入</td><td>自动导入（unplugin）</td><td>显式 import + barrel index.ts</td></tr>
+          <tr><td>Props 定义</td><td>interface Props + defineProps&lt;Props&gt;()</td><td>interface Props + 函数参数解构</td></tr>
+          <tr><td>Props 使用</td><td>kebab-case（:show-tooltip）</td><td>camelCase（showTooltip={false}）</td></tr>
+          <tr><td>Emit 事件</td><td>defineEmits + 字符串事件名</td><td>onXxx 回调 Props（onAdd, onDelete）</td></tr>
+          <tr><td>双向绑定</td><td>defineModel（v-model:columns）</td><td>value + onChange Props 模式</td></tr>
+          <tr><td>状态管理</td><td>Pinia useXxxStore()</td><td>Zustand useXxxStore() 或 Redux</td></tr>
+          <tr><td>组合式函数</td><td>hooks/common/*.ts</td><td>hooks/*.ts（命名 useXxx 相同）</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout green">
+      <strong>核心结论：</strong> Soybean 的架构思路（页面入口只做组装、业务拆进 modules、全局组件三级分类）在 React 中完全可以复现。最大差异是：① 文件名从 kebab 变 Pascal；② 全局组件从自动导入变为 barrel 手动聚合；③ Vue 的 defineOptions/defineModel 等 API 在 React 里由函数名和 Props 约定自然替代；④ 目录名惯例从 views → pages，modules → _components。
+    </div>
+  </section>
+
+</div>
+
+<footer>
+  基于 soybeanjs/soybean-admin@main 源码分析 · src/views + src/components · 2025
+</footer>
+
+</body>
+</html>
