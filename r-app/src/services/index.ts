@@ -7,3 +7,4 @@ export * from "./modules/config";
 export * from "./modules/webdav";
 export * from "./modules/window";
 export * from "./modules/logs";
+export * from "./modules/endpoint";
