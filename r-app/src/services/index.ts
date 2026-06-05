@@ -2,3 +2,4 @@
 export * from "./request";
 export * from "./modules/health";
 export * from "./modules/proxy";
+export * from "./modules/stats";
