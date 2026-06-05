@@ -5,4 +5,5 @@ pub mod stats;
 pub mod storage;
 pub mod tokens;
 pub mod transform;
+pub mod tray;
 pub mod webdav;

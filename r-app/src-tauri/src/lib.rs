@@ -5,7 +5,7 @@ mod modules;
 mod state;
 mod utils;
 
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -59,7 +59,46 @@ pub fn run() {
             let _ = app_state.app_handle.set(handle);
             app.manage(app_state);
 
-            // 托盘构建占位（阶段 6 P6-1）
+            // 系统托盘
+            if let Err(e) = modules::tray::build_tray(app.handle()) {
+                tracing::warn!("托盘构建失败: {e}");
+            }
+
+            // 窗口关闭行为（quit 退出 / minimize 隐藏托盘 / ask 前端询问）
+            if let Some(window) = app.get_webview_window("main") {
+                let close_handle = window.app_handle().clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        let behavior = {
+                            let state = close_handle.state::<state::AppState>();
+                            state
+                                .db_pool
+                                .get()
+                                .ok()
+                                .and_then(|c| {
+                                    modules::storage::config_repo::get_value(&c, "closeWindowBehavior")
+                                        .ok()
+                                        .flatten()
+                                })
+                                .unwrap_or_else(|| "ask".to_string())
+                        };
+                        match behavior.as_str() {
+                            "quit" => close_handle.exit(0),
+                            "minimize" => {
+                                api.prevent_close();
+                                if let Some(w) = close_handle.get_webview_window("main") {
+                                    let _ = w.hide();
+                                }
+                            }
+                            _ => {
+                                api.prevent_close();
+                                let _ = close_handle.emit("close-requested", ());
+                            }
+                        }
+                    }
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -90,7 +129,10 @@ pub fn run() {
             commands::webdav::webdav_backup,
             commands::webdav::webdav_restore,
             commands::webdav::webdav_list_backups,
-            commands::webdav::webdav_delete_backup
+            commands::webdav::webdav_delete_backup,
+            commands::window::set_language,
+            commands::window::apply_close_action,
+            commands::window::hide_to_tray
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
