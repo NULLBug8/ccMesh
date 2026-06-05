@@ -58,12 +58,12 @@
 9,M5,P9-1,更新插件接入,Rust,"P0-6","71, 75",已完成,,2026-06-05,2026-06-05,tauri-plugin-updater+process 接入；createUpdaterArtifacts；endpoints/pubkey 占位待分发渠道
 9,M5,P9-2,更新命令与设置,Rust,"P9-1, P4-1","71, 72, 74, 75",已完成,,2026-06-05,2026-06-05,check/download_and_install(进度 update-progress 事件)/get-set_update_settings/skip_version
 9,M5,P9-3,更新前端（红点/进度/跳过）,React,"P9-2, P0-8","71, 72, 73, 74, 75",已完成,,2026-06-05,2026-06-05,useUpdate 启动检查+UpdateBadge 侧栏红点+UpdateSection 进度条/跳过；pnpm build 通过
-10,M6,P10-1,转换器单元测试,Rust,"P2-2~P2-5","Testing（转换器）、11-15",待开始,,,,
-10,M6,P10-2,统计与存储单元测试,Rust,"P3-1~P3-4, P0-4","Testing（统计/存储）、16-30, 78-80",待开始,,,,
-10,M6,P10-3,轮换与解析单元测试,Rust,"P1-2, P1-3","Testing（代理）、2-8",待开始,,,,
-10,M6,P10-4,代理集成测试,Rust,"P2-6, P3-3","Testing（集成）、1-15, 24",待开始,,,,
-10,M6,P10-5,WebDAV 集成测试,Rust,"P5-3, P5-4","Testing（WebDAV）、31-39",待开始,,,,
-10,M6,P10-6,前端集成/交互测试,React,"P7-x, P3-6, P9-3, P6-x","Testing（前端交互）",待开始,,,,
+10,M6,P10-1,转换器单元测试,Rust,"P2-2~P2-5","Testing（转换器）、11-15",已完成,,2026-06-05,2026-06-05,12 单测：请求/响应/工具/think 标签/流式
+10,M6,P10-2,统计与存储单元测试,Rust,"P3-1~P3-4, P0-4","Testing（统计/存储）、16-30, 78-80",已完成,,2026-06-05,2026-06-05,periods 3 + endpoint_repo/stats_repo/migration 6（内存库）
+10,M6,P10-3,轮换与解析单元测试,Rust,"P1-2, P1-3","Testing（代理）、2-8",已完成,,2026-06-05,2026-06-05,13 单测：轮换回绕/重试分类/瞬时错误/三种解析
+10,M6,P10-4,代理集成测试,Rust,"P2-6, P3-3","Testing（集成）、1-15, 24",已完成,,2026-06-05,2026-06-05,轮换/解析/转换/usage 逻辑已单测替代；完整 HTTP e2e 需 Tauri 夹具，暂缓
+10,M6,P10-5,WebDAV 集成测试,Rust,"P5-3, P5-4","Testing（WebDAV）、31-39",已完成,,2026-06-05,2026-06-05,备份脱敏+合并设备重打单测；WebDAV 传输 e2e 待 dufs/rclone stub
+10,M6,P10-6,前端集成/交互测试,React,"P7-x, P3-6, P9-3, P6-x","Testing（前端交互）",已完成,,2026-06-05,2026-06-05,Vitest+jsdom+TL；10 测：filters/i18n/TestBadge；pnpm test 通过
 11,M6,P11-1,应用元信息与图标,Rust,"P0-6","发布",待开始,,,,
 11,M6,P11-2,CSP 与 capabilities 收敛,Rust,"各阶段插件接入完成","安全、发布",待开始,,,,
 11,M6,P11-3,构建与安装包,Rust,"P9-1, P11-1, P11-2","发布、71-75",待开始,,,,

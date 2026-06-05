@@ -101,3 +101,41 @@ pub fn delete_month(conn: &Connection, month: &str) -> AppResult<usize> {
     )?;
     Ok(n)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::storage::migration::run_migrations;
+
+    fn db() -> Connection {
+        let c = Connection::open_in_memory().unwrap();
+        run_migrations(&c).unwrap();
+        c
+    }
+
+    #[test]
+    fn upsert_accumulates_and_period_sums() {
+        let c = db();
+        upsert(&c, "ep", "2026-06-05", "dev", 1, 0, 10, 5).unwrap();
+        upsert(&c, "ep", "2026-06-05", "dev", 2, 1, 20, 10).unwrap();
+        let ps = period_stats(&c, "2026-06-05", "2026-06-05").unwrap();
+        assert_eq!(ps.requests, 3);
+        assert_eq!(ps.errors, 1);
+        assert_eq!(ps.input_tokens, 30);
+        assert_eq!(ps.output_tokens, 15);
+        assert_eq!(ps.endpoints.len(), 1);
+    }
+
+    #[test]
+    fn monthly_archive_list_and_delete() {
+        let c = db();
+        upsert(&c, "ep", "2026-05-01", "dev", 1, 0, 0, 0).unwrap();
+        upsert(&c, "ep", "2026-06-01", "dev", 1, 0, 0, 0).unwrap();
+        let months = archive_months(&c).unwrap();
+        assert!(months.contains(&"2026-06".to_string()));
+        assert!(months.contains(&"2026-05".to_string()));
+        assert_eq!(delete_month(&c, "2026-05").unwrap(), 1);
+        assert!(!archive_months(&c).unwrap().contains(&"2026-05".to_string()));
+    }
+}
+

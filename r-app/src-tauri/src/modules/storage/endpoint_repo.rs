@@ -176,3 +176,66 @@ pub fn set_test_status(conn: &Connection, id: i64, status: &str) -> AppResult<()
     )?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::storage::migration::run_migrations;
+
+    fn db() -> Connection {
+        let c = Connection::open_in_memory().unwrap();
+        run_migrations(&c).unwrap();
+        c
+    }
+
+    fn req(name: &str) -> CreateEndpointRequest {
+        CreateEndpointRequest {
+            name: name.into(),
+            api_url: "https://x".into(),
+            api_key: String::new(),
+            auth_mode: "api_key".into(),
+            enabled: true,
+            transformer: "claude".into(),
+            model: String::new(),
+            remark: String::new(),
+        }
+    }
+
+    fn upd(enabled: Option<bool>) -> UpdateEndpointRequest {
+        UpdateEndpointRequest {
+            name: None,
+            api_url: None,
+            api_key: None,
+            auth_mode: None,
+            enabled,
+            transformer: None,
+            model: None,
+            remark: None,
+        }
+    }
+
+    #[test]
+    fn crud_and_list_enabled() {
+        let c = db();
+        let a = create(&c, &req("a")).unwrap();
+        assert!(create(&c, &req("a")).is_err()); // 重名拒绝
+        let b = create(&c, &req("b")).unwrap();
+        update(&c, b.id, &upd(Some(false))).unwrap();
+        assert_eq!(list_all(&c).unwrap().len(), 2);
+        assert_eq!(list_enabled(&c).unwrap().len(), 1);
+        delete(&c, a.id).unwrap();
+        assert_eq!(list_all(&c).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn reorder_updates_sort_order() {
+        let mut c = db();
+        let a = create(&c, &req("a")).unwrap();
+        let b = create(&c, &req("b")).unwrap();
+        reorder(&mut c, &[b.id, a.id]).unwrap();
+        let list = list_all(&c).unwrap();
+        assert_eq!(list[0].name, "b");
+        assert_eq!(list[1].name, "a");
+    }
+}
+

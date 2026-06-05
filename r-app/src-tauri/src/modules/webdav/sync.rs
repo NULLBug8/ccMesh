@@ -95,3 +95,74 @@ pub fn merge_from_backup(
     let _ = conn.execute_batch("DETACH DATABASE backup");
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::storage::migration::run_migrations;
+    use rusqlite::Connection;
+
+    #[test]
+    fn backup_strips_device_config_and_merge_restamps_device() {
+        let dir = std::env::temp_dir();
+        let pid = std::process::id();
+        let src_path = dir.join(format!("ccx_src_{pid}.db"));
+        let bk_path = dir.join(format!("ccx_bk_{pid}.db"));
+        let tgt_path = dir.join(format!("ccx_tgt_{pid}.db"));
+        for p in [&src_path, &bk_path, &tgt_path] {
+            let _ = std::fs::remove_file(p);
+        }
+
+        // 源库：安全键 theme + 设备键 device_id + 一条统计（设备 SRC）
+        let src = Connection::open(&src_path).unwrap();
+        run_migrations(&src).unwrap();
+        src.execute(
+            "INSERT INTO app_config(key,value) VALUES('theme','dark'),('device_id','SRC')",
+            [],
+        )
+        .unwrap();
+        src.execute(
+            "INSERT INTO daily_stats(endpoint_name,date,requests,errors,input_tokens,output_tokens,device_id)
+             VALUES('ep','2026-06-05',5,0,0,0,'SRC')",
+            [],
+        )
+        .unwrap();
+
+        create_backup_copy(&src, &bk_path).unwrap();
+
+        // 备份副本：theme 保留，device_id 被剔除
+        let bk = Connection::open(&bk_path).unwrap();
+        let theme: Option<String> = bk
+            .query_row("SELECT value FROM app_config WHERE key='theme'", [], |r| r.get(0))
+            .ok();
+        assert_eq!(theme.as_deref(), Some("dark"));
+        let dev: Option<String> = bk
+            .query_row("SELECT value FROM app_config WHERE key='device_id'", [], |r| r.get(0))
+            .ok();
+        assert!(dev.is_none());
+        drop(bk);
+
+        // 目标库合并（overwrite）：daily_stats 重打本地 device_id
+        let mut tgt = Connection::open(&tgt_path).unwrap();
+        run_migrations(&tgt).unwrap();
+        merge_from_backup(&mut tgt, &bk_path, true, "LOCAL").unwrap();
+
+        let dev: String = tgt
+            .query_row("SELECT device_id FROM daily_stats WHERE endpoint_name='ep'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(dev, "LOCAL");
+        let reqs: i64 = tgt
+            .query_row("SELECT requests FROM daily_stats WHERE endpoint_name='ep'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(reqs, 5);
+        let theme: String = tgt
+            .query_row("SELECT value FROM app_config WHERE key='theme'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(theme, "dark");
+
+        drop(tgt);
+        for p in [&src_path, &bk_path, &tgt_path] {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+}

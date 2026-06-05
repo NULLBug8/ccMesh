@@ -93,3 +93,28 @@ pub fn run_migrations(conn: &Connection) -> AppResult<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn migrations_are_idempotent() {
+        let c = Connection::open_in_memory().unwrap();
+        run_migrations(&c).unwrap();
+        run_migrations(&c).unwrap(); // 第二次为空操作
+        let version: i64 = c
+            .query_row("SELECT MAX(version) FROM schema_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, MIGRATIONS.len() as i64);
+        // 关键表存在
+        let n: i64 = c
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('endpoints','daily_stats','app_config')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 3);
+    }
+}
