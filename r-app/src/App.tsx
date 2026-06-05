@@ -1,16 +1,7 @@
-import { Counter } from "./components/Counter";
-import { TodoList } from "./components/TodoList";
-import "./App.css";
+import { AppLayout } from "./layouts/AppLayout";
 
 function App() {
-  return (
-    <main className="container">
-      <hr />
-      <Counter />
-      <hr />
-      <TodoList />
-    </main>
-  );
+  return <AppLayout />;
 }
 
 export default App;

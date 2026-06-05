@@ -1,0 +1,4 @@
+// 服务层 barrel（对齐后端 commands/ 垂直切分；endpoint/stats/... 随各阶段补充）
+export * from "./request";
+export * from "./modules/health";
+export * from "./modules/proxy";
