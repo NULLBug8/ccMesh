@@ -16,6 +16,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use crate::models::endpoint::Endpoint;
 use crate::modules::proxy::resolver;
 use crate::modules::proxy::rotation::{self, Rotation};
+use crate::modules::stats::aggregator::StatsAggregator;
 use crate::modules::storage::{db::DbPool, endpoint_repo};
 use crate::modules::transform::claude_openai::openai_response_to_claude;
 use crate::modules::transform::streaming::StreamConverter;
@@ -77,6 +78,7 @@ pub struct ProxyState {
     pub rotation: Rotation,
     pub active: ActiveRequests,
     pub app_handle: AppHandle,
+    pub stats: Arc<StatsAggregator>,
     pub current_endpoint: Mutex<Option<String>>,
 }
 
@@ -202,6 +204,7 @@ pub async fn handle_proxy(
 
     let mut attempts_on_current = 0u32;
     let mut last_err = String::new();
+    let mut last_endpoint = String::new();
 
     for _ in 0..max {
         let ep: Endpoint = if let Some(ref e) = resolution.endpoint {
@@ -211,6 +214,7 @@ pub async fn handle_proxy(
             enabled[idx].clone()
         };
         st.set_current(&ep.name);
+        last_endpoint = ep.name.clone();
 
         let format = UpstreamFormat::from_transformer_name(&ep.transformer);
         // 请求转换（Claude → 上游）；Claude 直通
@@ -247,6 +251,7 @@ pub async fn handle_proxy(
             Some(Ok(resp)) => {
                 let status = resp.status().as_u16();
                 if status == 200 {
+                    st.stats.record(&ep.name, false, 0, 0);
                     return match format {
                         UpstreamFormat::Claude => relay_response(resp),
                         UpstreamFormat::OpenAiChat if client_wants_stream => {
@@ -257,6 +262,7 @@ pub async fn handle_proxy(
                 }
                 if !rotation::should_retry_status(status) {
                     // 最终非重试状态（400/401）原样回传
+                    st.stats.record(&ep.name, status >= 400, 0, 0);
                     return relay_response(resp);
                 }
                 last_err = format!("上游返回 {status}");
@@ -284,6 +290,9 @@ pub async fn handle_proxy(
         }
     }
 
+    if !last_endpoint.is_empty() {
+        st.stats.record(&last_endpoint, true, 0, 0);
+    }
     json_error(
         StatusCode::BAD_GATEWAY,
         &format!("所有端点均失败: {last_err}"),

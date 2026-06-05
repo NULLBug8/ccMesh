@@ -16,6 +16,7 @@ use tokio::task::JoinHandle;
 use crate::error::{AppError, AppResult};
 use crate::modules::proxy::forward::{handle_proxy, ActiveRequests, ProxyState};
 use crate::modules::proxy::rotation::Rotation;
+use crate::modules::stats::aggregator::StatsAggregator;
 use crate::modules::storage::{db::DbPool, endpoint_repo};
 
 /// 代理运行句柄，存于 `AppState.proxy`。持有关停信号、任务句柄与共享状态。
@@ -75,6 +76,7 @@ pub async fn start_proxy(
     app_handle: AppHandle,
     db_pool: DbPool,
     port: u16,
+    stats: Arc<StatsAggregator>,
 ) -> AppResult<ProxyHandle> {
     let client = reqwest::Client::builder()
         .pool_max_idle_per_host(10)
@@ -90,6 +92,7 @@ pub async fn start_proxy(
         rotation: Rotation::new(),
         active: ActiveRequests::default(),
         app_handle,
+        stats,
         current_endpoint: Mutex::new(None),
     });
 

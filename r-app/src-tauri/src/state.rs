@@ -1,8 +1,9 @@
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use tauri::AppHandle;
 
 use crate::modules::proxy::server::ProxyHandle;
+use crate::modules::stats::aggregator::StatsAggregator;
 use crate::modules::storage::db::DbPool;
 
 /// 模型列表缓存（30 分钟 TTL，详见阶段 4 P4-6）。Phase 0 仅占位。
@@ -18,16 +19,18 @@ pub struct AppState {
     pub proxy: Mutex<Option<ProxyHandle>>,
     pub models_cache: Mutex<ModelsCache>,
     pub device_id: String,
+    pub stats: Arc<StatsAggregator>,
     pub app_handle: OnceLock<AppHandle>,
 }
 
 impl AppState {
-    pub fn new(db_pool: DbPool, device_id: String) -> Self {
+    pub fn new(db_pool: DbPool, device_id: String, stats: Arc<StatsAggregator>) -> Self {
         Self {
             db_pool,
             proxy: Mutex::new(None),
             models_cache: Mutex::new(ModelsCache::default()),
             device_id,
+            stats,
             app_handle: OnceLock::new(),
         }
     }

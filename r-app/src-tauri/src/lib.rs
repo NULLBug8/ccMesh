@@ -37,8 +37,15 @@ pub fn run() {
             };
             tracing::info!(%device_id, "存储与设备标识初始化完成");
 
+            // 统计聚合器（内存累加 + 2s 防抖落库 + 零延迟事件）
+            let stats = modules::stats::aggregator::StatsAggregator::new(
+                pool.clone(),
+                handle.clone(),
+                device_id.clone(),
+            );
+
             // 注入全局状态，保存 AppHandle 供事件推送
-            let app_state = state::AppState::new(pool, device_id);
+            let app_state = state::AppState::new(pool, device_id, stats);
             let _ = app_state.app_handle.set(handle);
             app.manage(app_state);
 
@@ -50,7 +57,11 @@ pub fn run() {
             commands::proxy::start_proxy,
             commands::proxy::stop_proxy,
             commands::proxy::get_proxy_status,
-            commands::proxy::switch_endpoint
+            commands::proxy::switch_endpoint,
+            commands::stats::get_stats,
+            commands::stats::get_archive_months,
+            commands::stats::get_monthly_archive,
+            commands::stats::delete_monthly_stats
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
