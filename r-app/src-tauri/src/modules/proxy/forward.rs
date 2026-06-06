@@ -72,9 +72,6 @@ impl ActiveRequests {
     }
 }
 
-/// 客户端未提供 UA 且未配置伪装 UA 时的中性默认（避免泄露 reqwest 默认 UA）。
-const DEFAULT_UA: &str = "ccnexus/1.0";
-
 /// 代理运行期共享状态，注入 axum 处理器。
 pub struct ProxyState {
     pub db_pool: DbPool,
@@ -379,7 +376,16 @@ async fn send_upstream(
     };
     let mut rb = client.request(rmethod, url);
 
-    // 复制客户端头部（剔除 Host / Content-Length / Accept-Encoding / 客户端凭证 / 控制头 / UA）
+    // 伪装 UA：按上游格式取配置；非空则覆盖客户端 UA，为空则纯透传（客户端 UA 随下方头部复制原样转发）
+    let ua_format = UpstreamFormat::from_transformer_name(&ep.transformer);
+    let ua_override = match ua_format {
+        UpstreamFormat::OpenAiChat => st.openai_ua.trim(),
+        UpstreamFormat::Claude => st.claude_cli_ua.trim(),
+    };
+    let override_ua = !ua_override.is_empty();
+
+    // 复制客户端头部（剔除 Host / Content-Length / Accept-Encoding / 客户端凭证 / 控制头；
+    // 仅在配置了伪装 UA 时剔除客户端 user-agent，否则原样透传客户端 UA）
     for (k, v) in headers.iter() {
         let kn = k.as_str().to_ascii_lowercase();
         if kn == "host"
@@ -387,9 +393,9 @@ async fn send_upstream(
             || kn == "accept-encoding"
             || kn == "authorization"
             || kn == "x-api-key"
-            || kn == "user-agent"
             || kn == resolver::ENDPOINT_HEADER
             || kn == resolver::ENDPOINT_HEADER_ALT
+            || (override_ua && kn == "user-agent")
         {
             continue;
         }
@@ -398,22 +404,10 @@ async fn send_upstream(
         }
     }
 
-    // User-Agent：按上游格式伪装（配置非空则覆盖）；否则透传客户端；客户端也无则用中性默认（不泄露 reqwest 默认）
-    let ua_format = UpstreamFormat::from_transformer_name(&ep.transformer);
-    let ua_override = match ua_format {
-        UpstreamFormat::OpenAiChat => st.openai_ua.trim(),
-        UpstreamFormat::Claude => st.claude_cli_ua.trim(),
-    };
-    let ua = if !ua_override.is_empty() {
-        ua_override
-    } else {
-        headers
-            .get(axum::http::header::USER_AGENT)
-            .and_then(|v| v.to_str().ok())
-            .filter(|s| !s.is_empty())
-            .unwrap_or(DEFAULT_UA)
-    };
-    rb = rb.header("user-agent", ua);
+    // 配置了伪装 UA 才覆盖；未配置时客户端 UA 已在上面原样透传
+    if override_ua {
+        rb = rb.header("user-agent", ua_override);
+    }
 
     // 附加鉴权头（按 transformer / auth_mode）
     let key = ep.api_key.as_str();
