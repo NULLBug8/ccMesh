@@ -1,0 +1,12 @@
+task_id,title,layer,related_questions,depends_on,status,owner,start_date,done_date,notes
+P12-1,数据模型与迁移基座,Rust,#3/#4/#5,-,已完成,,2026-06-07,2026-06-07,endpoints加models/use_proxy列;app_config加proxyUrl/openaiUa/claudeCliUa;同步struct与repo
+P12-2,端点CRUD与model语义,Rust,#3/#5,P12-1,已完成,,2026-06-07,2026-06-07,create/update/clone持久化新字段;model=锁定 models=清单
+P12-3,候选模型拉取命令,Rust,#3,-,未开始,,,,新增fetch_endpoint_models(url/key/transformer);抽取fetch_models核心;lib注册
+P12-4,/v1/models路由聚合,Rust,#1,P12-1,未开始,,,,models_route读库组装配置态清单;聚合型展开+专用型单条;不拉上游
+P12-5,OpenAI入站识别与透传,Rust,#6,P12-1,未开始,,,,handle_proxy按path判入站;OpenAI入站候选过滤openai端点;同格式透传;model锁定覆盖
+P12-6,代理支持双client,Rust,#5,P12-1,未开始,,,,ProxyState加proxy_client;按use_proxy选用;set_config变更proxyUrl重启代理
+P12-7,UA注入按上游格式伪装,Rust,#4,P12-1/P12-6,未开始,,,,openai端点用openaiUa claude端点用claudeCliUa;填则覆盖否则透传;无UA不泄露reqwest默认
+P12-8,端点表单多选刷新与代理开关,React,#3,P12-2/P12-3,未开始,,,,模型自定义输入+刷新拉候选+已选标签云;useProxy开关;endpoint.ts加字段与fetchModels
+P12-9,端点展示分组与悬停浮层,React,#2,P12-1/P12-8,未开始,,,,grid卡片可用性处挂浮层限高可滚动;ModelList改按端点分组
+P12-10,设置页代理地址与两个UA,React,#4/#5,P12-1,未开始,,,,Settings加系统区块代理地址+高级设置两个UA;config.ts加字段
+P12-11,测试与回归校验,Rust+React,#1-#6,P12-1/P12-2/P12-3/P12-4/P12-5/P12-6/P12-7/P12-8/P12-9/P12-10,未开始,,,,入站过滤/锁定覆盖/迁移幂等/models聚合/代理选用/UA三态/前端交互;Claude主链路不回归
