@@ -182,7 +182,11 @@ async fn models_route(State(st): State<Arc<ProxyState>>) -> Response {
     Json(json!({ "object": "list", "data": data })).into_response()
 }
 
-// Token 计数在 P4-8 实现；先返回占位。
-async fn count_tokens_route(_body: Bytes) -> Response {
-    Json(json!({ "input_tokens": 0 })).into_response()
+/// `/v1/messages/count_tokens`：解析请求体 system/messages，返回输入 token 估算。
+async fn count_tokens_route(body: Bytes) -> Response {
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap_or(serde_json::Value::Null);
+    let system = json.get("system");
+    let messages = json.get("messages").cloned().unwrap_or_else(|| json!([]));
+    let input = crate::modules::tokens::estimate_input_tokens(system, &messages);
+    Json(json!({ "input_tokens": input })).into_response()
 }
