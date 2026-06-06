@@ -6,4 +6,5 @@ pub mod storage;
 pub mod tokens;
 pub mod transform;
 pub mod tray;
+pub mod usage;
 pub mod webdav;

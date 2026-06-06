@@ -18,6 +18,7 @@ use crate::modules::proxy::resolver;
 use crate::modules::proxy::rotation::{self, Rotation};
 use crate::modules::stats::aggregator::StatsAggregator;
 use crate::modules::storage::{db::DbPool, endpoint_repo};
+use crate::modules::usage;
 use crate::modules::transform::claude_openai::openai_response_to_claude;
 use crate::modules::transform::streaming::StreamConverter;
 use crate::modules::transform::transformer::{get_transformer, UpstreamFormat};
@@ -303,21 +304,25 @@ pub async fn handle_proxy(
             Some(Ok(resp)) => {
                 let status = resp.status().as_u16();
                 if status == 200 {
-                    st.stats.record(&ep.name, false, 0, 0);
-                    return if needs_transform {
-                        if client_wants_stream {
-                            stream_transform_response(resp, model.clone().unwrap_or_default())
-                        } else {
-                            transform_buffered_response(resp).await
-                        }
-                    } else {
-                        relay_response(resp)
+                    // 真实 token 由各响应处理函数解析上游 usage 后记录
+                    let stats = st.stats.clone();
+                    let name = ep.name.clone();
+                    return match (needs_transform, client_wants_stream) {
+                        (true, true) => stream_transform_response(
+                            resp,
+                            model.clone().unwrap_or_default(),
+                            stats,
+                            name,
+                        ),
+                        (true, false) => transform_buffered_response(resp, stats, name).await,
+                        (false, true) => relay_stream_response(resp, stats, name, format),
+                        (false, false) => relay_buffered_response(resp, stats, name, format).await,
                     };
                 }
                 if !rotation::should_retry_status(status) {
-                    // 最终非重试状态（400/401）原样回传
+                    // 最终非重试状态（400/401）原样回传（错误无 usage）
                     st.stats.record(&ep.name, status >= 400, 0, 0);
-                    return relay_response(resp);
+                    return relay_passthrough(resp);
                 }
                 last_err = format!("上游返回 {status}");
                 attempts_on_current += 1;
@@ -428,9 +433,8 @@ async fn send_upstream(
     rb.body(body.clone()).send().await
 }
 
-/// 将上游响应以字节流直通转发回客户端（兼容 SSE 与普通 JSON）。
-fn relay_response(resp: reqwest::Response) -> Response {
-    let status = StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+/// 复制上游响应头（剔除逐跳头）。
+fn copy_response_headers(resp: &reqwest::Response) -> HeaderMap {
     let mut out = HeaderMap::new();
     for (k, v) in resp.headers().iter() {
         let kn = k.as_str().to_ascii_lowercase();
@@ -444,6 +448,13 @@ fn relay_response(resp: reqwest::Response) -> Response {
             out.insert(name, val);
         }
     }
+    out
+}
+
+/// 纯字节流直通（不解析 usage，用于错误响应）。
+fn relay_passthrough(resp: reqwest::Response) -> Response {
+    let status = StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+    let out = copy_response_headers(&resp);
     let body = Body::from_stream(resp.bytes_stream());
     let mut response = Response::new(body);
     *response.status_mut() = status;
@@ -451,19 +462,88 @@ fn relay_response(resp: reqwest::Response) -> Response {
     response
 }
 
-/// 非流式 OpenAI 响应 → 缓冲后转换为 Claude JSON 回传。
-async fn transform_buffered_response(resp: reqwest::Response) -> Response {
+/// 非流式直通：缓冲响应体 → 按上游格式解析真实 usage 记录统计 → 原样回传。
+async fn relay_buffered_response(
+    resp: reqwest::Response,
+    stats: Arc<StatsAggregator>,
+    endpoint: String,
+    format: UpstreamFormat,
+) -> Response {
+    let status = StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+    let out = copy_response_headers(&resp);
+    let bytes = match resp.bytes().await {
+        Ok(b) => b,
+        Err(e) => return json_error(StatusCode::BAD_GATEWAY, &format!("读取上游响应失败: {e}")),
+    };
+    let (i, o) = serde_json::from_slice::<Value>(&bytes)
+        .map(|j| usage::from_response(&j, format))
+        .unwrap_or((0, 0));
+    stats.record(&endpoint, false, i, o);
+    let mut response = Response::new(Body::from(bytes));
+    *response.status_mut() = status;
+    *response.headers_mut() = out;
+    response
+}
+
+/// 流式直通：转发原始 SSE 字节同时累积真实 usage，流结束记录统计。
+fn relay_stream_response(
+    resp: reqwest::Response,
+    stats: Arc<StatsAggregator>,
+    endpoint: String,
+    format: UpstreamFormat,
+) -> Response {
+    let status = StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+    let out = copy_response_headers(&resp);
+    let (tx, rx) = mpsc::channel::<Result<Bytes, std::io::Error>>(32);
+    tokio::spawn(async move {
+        let mut acc = usage::UsageAccumulator::new(format);
+        let mut stream = resp.bytes_stream();
+        while let Some(item) = stream.next().await {
+            let chunk = match item {
+                Ok(c) => c,
+                Err(_) => break,
+            };
+            acc.feed(&chunk);
+            if tx.send(Ok(chunk)).await.is_err() {
+                break;
+            }
+        }
+        let (i, o) = acc.finish();
+        stats.record(&endpoint, false, i, o);
+    });
+    let body = Body::from_stream(ReceiverStream::new(rx));
+    let mut response = Response::new(body);
+    *response.status_mut() = status;
+    *response.headers_mut() = out;
+    response
+}
+
+/// 非流式 OpenAI 响应 → 缓冲后转换为 Claude JSON 回传；记录真实 usage。
+async fn transform_buffered_response(
+    resp: reqwest::Response,
+    stats: Arc<StatsAggregator>,
+    endpoint: String,
+) -> Response {
     match resp.text().await {
         Ok(text) => match serde_json::from_str::<Value>(&text) {
-            Ok(openai) => (StatusCode::OK, axum::Json(openai_response_to_claude(&openai))).into_response(),
+            Ok(openai) => {
+                let (i, o) = usage::from_response(&openai, UpstreamFormat::OpenAiChat);
+                stats.record(&endpoint, false, i, o);
+                (StatusCode::OK, axum::Json(openai_response_to_claude(&openai))).into_response()
+            }
             Err(_) => json_error(StatusCode::BAD_GATEWAY, "上游响应解析失败"),
         },
         Err(e) => json_error(StatusCode::BAD_GATEWAY, &format!("读取上游响应失败: {e}")),
     }
 }
 
-/// 流式 OpenAI SSE → 边解析边转换为 Claude SSE 事件流回传。
-fn stream_transform_response(resp: reqwest::Response, model: String) -> Response {
+/// 流式 OpenAI SSE → 边解析边转换为 Claude SSE 事件流回传；流结束记录真实 usage。
+fn stream_transform_response(
+    resp: reqwest::Response,
+    model: String,
+    stats: Arc<StatsAggregator>,
+    endpoint: String,
+) -> Response {
     let (tx, rx) = mpsc::channel::<Result<Bytes, std::io::Error>>(32);
     tokio::spawn(async move {
         let mut converter = StreamConverter::new(model, 0);
@@ -500,6 +580,8 @@ fn stream_transform_response(resp: reqwest::Response, model: String) -> Response
         for ev in converter.finish() {
             let _ = tx.send(Ok(Bytes::from(ev))).await;
         }
+        let (i, o) = converter.usage();
+        stats.record(&endpoint, false, i, o);
     });
 
     let body = Body::from_stream(ReceiverStream::new(rx));

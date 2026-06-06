@@ -24,6 +24,11 @@ impl StreamConverter {
         }
     }
 
+    /// 当前累积的 (input_tokens, output_tokens)，供流结束后统计记录真实用量。
+    pub fn usage(&self) -> (i64, i64) {
+        (self.ctx.input_tokens, self.ctx.output_tokens)
+    }
+
     fn message_start(&mut self, id: &Value, events: &mut Vec<String>) {
         if self.ctx.message_start_sent {
             return;
