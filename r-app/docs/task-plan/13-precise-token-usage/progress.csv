@@ -1,0 +1,5 @@
+task_id,title,layer,depends_on,status,owner,start_date,done_date,notes
+P13-1,usage解析模块与StreamConverter getter,Rust,-,已完成,,2026-06-07,2026-06-07,新建modules/usage.rs(from_response+UsageAccumulator);StreamConverter加usage()
+P13-2,转发接入真实usage,Rust,P13-1,已完成,,2026-06-07,2026-06-07,forward响应4路径record真实token;错误走relay_passthrough;移除硬编码0
+P13-3,count_tokens HTTP端点补占位,Rust,-,已完成,,2026-06-07,2026-06-07,server.rs count_tokens_route接estimate_input_tokens
+P13-4,测试与回归,Rust,P13-1/P13-2/P13-3,已完成,,2026-06-07,2026-06-07,usage解析6单测(claude/openai非流式+SSE累积+分片);后端46测试全通过
