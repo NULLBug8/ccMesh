@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ActivityIcon,
@@ -11,13 +12,17 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Switch } from "@/components/ui/switch";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
 import { endpointApi, type Endpoint } from "@/services/modules/endpoint";
 import type { EndpointView } from "@/stores";
 import { TestBadge } from "./TestBadge";
@@ -43,6 +48,7 @@ export function EndpointCard({
 }: Props) {
   const qc = useQueryClient();
   const invalidate = () => qc.invalidateQueries({ queryKey: ["endpoints"] });
+  const [testOpen, setTestOpen] = useState(false);
 
   const toggle = useMutation({
     mutationFn: (v: boolean) => endpointApi.update(endpoint.id, { enabled: v }),
@@ -50,7 +56,7 @@ export function EndpointCard({
     onError: (e) => toast.error(errMsg(e)),
   });
   const test = useMutation({
-    mutationFn: () => endpointApi.test(endpoint.id),
+    mutationFn: (model?: string) => endpointApi.test(endpoint.id, model),
     onSuccess: (r) => {
       r.success
         ? toast.success(`${endpoint.name}：${r.message} (${r.latencyMs}ms)`)
@@ -97,17 +103,57 @@ export function EndpointCard({
     />
   );
 
-  const actions = (
-    <div className="flex gap-0.5">
+  // 该端点对外展示/可测试的模型：锁定 model 优先，否则聚合清单 models
+  const shownModels = endpoint.model ? [endpoint.model] : endpoint.models ?? [];
+
+  // 测试连通性需指定模型：≥2 个模型时弹 Popover 选择，否则直接测（0/1 模型走回落）
+  const testButton =
+    shownModels.length >= 2 ? (
+      <Popover open={testOpen} onOpenChange={setTestOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            size="icon"
+            variant="ghost"
+            aria-label="测试连通性"
+            disabled={test.isPending}
+          >
+            <ActivityIcon className="size-4" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-56 p-2">
+          <p className="mb-1.5 px-1 text-xs text-ink-mute">选择测试模型</p>
+          <div className="flex max-h-60 flex-col gap-0.5 overflow-auto">
+            {shownModels.map((m) => (
+              <button
+                key={m}
+                type="button"
+                className="cursor-pointer rounded px-2 py-1 text-left font-mono text-xs hover:bg-surface-hover"
+                onClick={() => {
+                  setTestOpen(false);
+                  test.mutate(m);
+                }}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        </PopoverContent>
+      </Popover>
+    ) : (
       <Button
         size="icon"
         variant="ghost"
-        aria-label="测试"
-        onClick={() => test.mutate()}
+        aria-label="测试连通性"
+        onClick={() => test.mutate(shownModels[0])}
         disabled={test.isPending}
       >
         <ActivityIcon className="size-4" />
       </Button>
+    );
+
+  const actions = (
+    <div className="flex gap-0.5">
+      {testButton}
       <Button size="icon" variant="ghost" aria-label="克隆" onClick={() => clone.mutate()}>
         <CopyIcon className="size-4" />
       </Button>
@@ -127,35 +173,29 @@ export function EndpointCard({
     </span>
   );
 
-  // 该端点对外展示的模型：锁定 model 优先，否则聚合清单 models
-  const shownModels = endpoint.model ? [endpoint.model] : endpoint.models ?? [];
+  // 可用性指示：悬停展示该端点模型清单（限高可滚动）
   const availability = (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="cursor-default">
-            <TestBadge status={endpoint.testStatus} />
-          </span>
-        </TooltipTrigger>
-        <TooltipContent
-          side="top"
-          className="max-h-60 max-w-xs overflow-auto border border-edge bg-card p-2 text-ink-primary"
-        >
-          {shownModels.length === 0 ? (
-            <span className="text-ink-mute">无已配置模型</span>
-          ) : (
-            <div className="flex flex-col gap-0.5">
-              <span className="mb-1 text-ink-secondary">模型（{shownModels.length}）</span>
-              {shownModels.map((m) => (
-                <span key={m} className="font-mono text-xs">
-                  {m}
-                </span>
-              ))}
-            </div>
-          )}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <HoverCard openDelay={100} closeDelay={100}>
+      <HoverCardTrigger asChild>
+        <span className="cursor-default">
+          <TestBadge status={endpoint.testStatus} />
+        </span>
+      </HoverCardTrigger>
+      <HoverCardContent side="top" className="max-h-60 w-56 overflow-auto">
+        {shownModels.length === 0 ? (
+          <span className="text-sm text-ink-mute">无已配置模型</span>
+        ) : (
+          <div className="flex flex-col gap-0.5">
+            <span className="mb-1 text-xs text-ink-secondary">模型（{shownModels.length}）</span>
+            {shownModels.map((m) => (
+              <span key={m} className="font-mono text-xs">
+                {m}
+              </span>
+            ))}
+          </div>
+        )}
+      </HoverCardContent>
+    </HoverCard>
   );
 
   if (view === "grid") {

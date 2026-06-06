@@ -109,7 +109,11 @@ pub struct TestResult {
 
 /// 探测端点连通性：发送最小请求，200 即可用；持久化 test_status。
 #[tauri::command]
-pub async fn test_endpoint(state: State<'_, AppState>, id: i64) -> AppResult<TestResult> {
+pub async fn test_endpoint(
+    state: State<'_, AppState>,
+    id: i64,
+    model: Option<String>,
+) -> AppResult<TestResult> {
     let ep = {
         let conn = state.db_pool.get()?;
         endpoint_repo::get_by_id(&conn, id)?
@@ -123,14 +127,19 @@ pub async fn test_endpoint(state: State<'_, AppState>, id: i64) -> AppResult<Tes
 
     let base = ep.api_url.trim_end_matches('/');
     let format = UpstreamFormat::from_transformer_name(&ep.transformer);
-    let model = if ep.model.is_empty() {
-        match format {
-            UpstreamFormat::OpenAiChat => "gpt-4o-mini",
-            UpstreamFormat::Claude => "claude-3-5-sonnet-latest",
-        }
-    } else {
-        ep.model.as_str()
+    // 优先用调用方指定的模型（前端选择），否则端点锁定 model，再否则按格式回落默认
+    let fallback = match format {
+        UpstreamFormat::OpenAiChat => "gpt-4o-mini",
+        UpstreamFormat::Claude => "claude-3-5-sonnet-latest",
     };
+    let model_str = model.filter(|s| !s.trim().is_empty()).unwrap_or_else(|| {
+        if ep.model.is_empty() {
+            fallback.to_string()
+        } else {
+            ep.model.clone()
+        }
+    });
+    let model = model_str.as_str();
 
     let (url, builder) = match format {
         UpstreamFormat::OpenAiChat => {

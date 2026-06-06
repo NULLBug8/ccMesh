@@ -50,7 +50,8 @@ export const endpointApi = {
   reorder: (orderedIds: number[]) =>
     request<void>("reorder_endpoints", { orderedIds }),
   clone: (id: number) => request<Endpoint>("clone_endpoint", { id }),
-  test: (id: number) => request<EndpointTestResult>("test_endpoint", { id }),
+  test: (id: number, model?: string) =>
+    request<EndpointTestResult>("test_endpoint", { id, model }),
   fetchModels: (apiUrl: string, apiKey: string, transformer: string) =>
     request<string[]>("fetch_endpoint_models", { apiUrl, apiKey, transformer }),
 };
