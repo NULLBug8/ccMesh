@@ -12,6 +12,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { endpointApi, type Endpoint } from "@/services/modules/endpoint";
 import type { EndpointView } from "@/stores";
 import { TestBadge } from "./TestBadge";
@@ -121,6 +127,37 @@ export function EndpointCard({
     </span>
   );
 
+  // 该端点对外展示的模型：锁定 model 优先，否则聚合清单 models
+  const shownModels = endpoint.model ? [endpoint.model] : endpoint.models ?? [];
+  const availability = (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="cursor-default">
+            <TestBadge status={endpoint.testStatus} />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent
+          side="top"
+          className="max-h-60 max-w-xs overflow-auto border border-edge bg-card p-2 text-ink-primary"
+        >
+          {shownModels.length === 0 ? (
+            <span className="text-ink-mute">无已配置模型</span>
+          ) : (
+            <div className="flex flex-col gap-0.5">
+              <span className="mb-1 text-ink-secondary">模型（{shownModels.length}）</span>
+              {shownModels.map((m) => (
+                <span key={m} className="font-mono text-xs">
+                  {m}
+                </span>
+              ))}
+            </div>
+          )}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+
   if (view === "grid") {
     return (
       <Card className="h-full gap-0 py-0">
@@ -132,7 +169,7 @@ export function EndpointCard({
           </div>
           {meta}
           <div className="mt-auto flex items-center justify-between gap-2 border-t border-edge-subtle pt-2.5">
-            <TestBadge status={endpoint.testStatus} />
+            {availability}
             {enableSwitch}
           </div>
           <div className="flex justify-end">{actions}</div>
@@ -149,7 +186,7 @@ export function EndpointCard({
           <div className="flex items-center gap-2">
             <span className="truncate font-medium">{endpoint.name}</span>
             <Badge variant="muted">{endpoint.transformer}</Badge>
-            <TestBadge status={endpoint.testStatus} />
+            {availability}
           </div>
           {meta}
         </div>

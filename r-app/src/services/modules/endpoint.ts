@@ -7,8 +7,10 @@ export interface Endpoint {
   apiKey: string;
   authMode: string;
   enabled: boolean;
+  useProxy: boolean;
   transformer: string;
   model: string;
+  models: string[];
   remark: string;
   sortOrder: number;
   testStatus: string;
@@ -22,8 +24,10 @@ export interface CreateEndpointRequest {
   apiKey?: string;
   authMode?: string;
   enabled?: boolean;
+  useProxy?: boolean;
   transformer?: string;
   model?: string;
+  models?: string[];
   remark?: string;
 }
 
@@ -47,4 +51,6 @@ export const endpointApi = {
     request<void>("reorder_endpoints", { orderedIds }),
   clone: (id: number) => request<Endpoint>("clone_endpoint", { id }),
   test: (id: number) => request<EndpointTestResult>("test_endpoint", { id }),
+  fetchModels: (apiUrl: string, apiKey: string, transformer: string) =>
+    request<string[]>("fetch_endpoint_models", { apiUrl, apiKey, transformer }),
 };

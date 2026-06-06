@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { json } from "@codemirror/lang-json";
 import CodeMirror from "@uiw/react-codemirror";
+import { PlusIcon, RefreshCwIcon, XIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -22,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { endpointApi, type Endpoint } from "@/services/modules/endpoint";
 
@@ -31,6 +34,8 @@ interface FormState {
   apiKey: string;
   transformer: string;
   model: string;
+  models: string[];
+  useProxy: boolean;
   remark: string;
 }
 
@@ -40,6 +45,8 @@ const EMPTY: FormState = {
   apiKey: "",
   transformer: "claude",
   model: "",
+  models: [],
+  useProxy: false,
   remark: "",
 };
 
@@ -57,6 +64,7 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
   const [form, setForm] = useState<FormState>(EMPTY);
   const [jsonText, setJsonText] = useState("");
   const [jsonErr, setJsonErr] = useState("");
+  const [modelInput, setModelInput] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -67,20 +75,46 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
           apiKey: editing.apiKey,
           transformer: editing.transformer,
           model: editing.model,
+          models: editing.models ?? [],
+          useProxy: editing.useProxy ?? false,
           remark: editing.remark,
         }
       : EMPTY;
     setForm(init);
     setJsonText(JSON.stringify(init, null, 2));
     setJsonErr("");
+    setModelInput("");
   }, [open, editing]);
 
-  const set = (k: keyof FormState, v: string) =>
+  const update = (patch: Partial<FormState>) =>
     setForm((f) => {
-      const next = { ...f, [k]: v };
+      const next = { ...f, ...patch };
       setJsonText(JSON.stringify(next, null, 2));
       return next;
     });
+
+  const set = (k: keyof FormState, v: string) =>
+    update({ [k]: v } as Partial<FormState>);
+
+  const addModel = () => {
+    const m = modelInput.trim();
+    setModelInput("");
+    if (!m || form.models.includes(m)) return;
+    update({ models: [...form.models, m] });
+  };
+  const removeModel = (m: string) =>
+    update({ models: form.models.filter((x) => x !== m) });
+
+  const refresh = useMutation({
+    mutationFn: () =>
+      endpointApi.fetchModels(form.apiUrl, form.apiKey, form.transformer),
+    onSuccess: (ids) => {
+      const merged = Array.from(new Set([...form.models, ...ids]));
+      update({ models: merged });
+      toast.success(`拉取到 ${ids.length} 个模型`);
+    },
+    onError: (e) => toast.error(errMsg(e)),
+  });
 
   const onJsonChange = (val: string) => {
     setJsonText(val);
@@ -108,7 +142,7 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
     { k: "name", label: "名称" },
     { k: "apiUrl", label: "API URL", ph: "https://api.anthropic.com" },
     { k: "apiKey", label: "API Key", type: "password" },
-    { k: "model", label: "模型（可选）" },
+    { k: "model", label: "锁定模型（可选，填则强制覆盖请求 model）" },
     { k: "remark", label: "备注（可选）" },
   ];
 
@@ -133,11 +167,12 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
                   id={f.k}
                   type={f.type ?? "text"}
                   placeholder={f.ph}
-                  value={form[f.k]}
+                  value={form[f.k] as string}
                   onChange={(e) => set(f.k, e.target.value)}
                 />
               </div>
             ))}
+
             <div className="flex flex-col gap-1.5">
               <Label>转换器</Label>
               <Select value={form.transformer} onValueChange={(v) => set("transformer", v)}>
@@ -149,6 +184,79 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
                   <SelectItem value="openai">openai（转换）</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <Label>模型清单（对外公布，供 /v1/models 与展示）</Label>
+                <span className="text-xs text-ink-mute">已选 {form.models.length}</span>
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="自定义模型名，回车或 + 添加"
+                  value={modelInput}
+                  onChange={(e) => setModelInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addModel();
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={addModel}
+                  aria-label="添加模型"
+                >
+                  <PlusIcon className="size-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => refresh.mutate()}
+                  disabled={refresh.isPending || !form.apiUrl}
+                  aria-label="刷新拉取模型"
+                >
+                  <RefreshCwIcon className="size-4" />
+                </Button>
+              </div>
+              {form.models.length > 0 && (
+                <>
+                  <div className="flex max-h-40 flex-wrap gap-1.5 overflow-auto rounded-md border border-edge p-2">
+                    {form.models.map((m) => (
+                      <Badge key={m} variant="muted" className="gap-1">
+                        {m}
+                        <button
+                          type="button"
+                          onClick={() => removeModel(m)}
+                          aria-label={`移除 ${m}`}
+                          className="cursor-pointer"
+                        >
+                          <XIcon className="size-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    className="self-end text-xs text-ink-mute hover:text-ink-secondary"
+                    onClick={() => update({ models: [] })}
+                  >
+                    清除全部
+                  </button>
+                </>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between">
+              <Label>启用代理（经设置中的全局代理地址出网）</Label>
+              <Switch
+                checked={form.useProxy}
+                onCheckedChange={(v) => update({ useProxy: v })}
+              />
             </div>
           </TabsContent>
 

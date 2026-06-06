@@ -1,54 +1,37 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { RefreshCwIcon } from "lucide-react";
-
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { modelsApi } from "@/services/modules/models";
+import { useEndpoints } from "@/hooks/useEndpoints";
 
-/** 可用模型列表 + 刷新（命中缓存不重复请求；刷新强制拉取）。 */
+/** 按端点分组展示其配置态模型（锁定 model 优先，否则聚合清单 models）。 */
 export function ModelList() {
-  const [refreshing, setRefreshing] = useState(false);
-  const q = useQuery({
-    queryKey: ["models"],
-    queryFn: () => modelsApi.getModels(false),
-  });
-
-  const refresh = async () => {
-    setRefreshing(true);
-    try {
-      await modelsApi.getModels(true);
-      await q.refetch();
-    } finally {
-      setRefreshing(false);
-    }
-  };
-
-  const models = q.data?.data ?? [];
+  const { data: endpoints } = useEndpoints();
+  const groups = (endpoints ?? [])
+    .filter((e) => e.enabled)
+    .map((e) => ({
+      name: e.name,
+      models: e.model ? [e.model] : e.models ?? [],
+    }))
+    .filter((g) => g.models.length > 0);
 
   return (
     <section className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium text-ink-secondary">
-          可用模型 <span className="text-ink-mute">({models.length})</span>
-        </h2>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={refresh}
-          disabled={refreshing || q.isFetching}
-        >
-          <RefreshCwIcon className="size-4" /> 刷新
-        </Button>
-      </div>
-      {models.length === 0 ? (
-        <p className="text-sm text-ink-mute">暂无模型（启用端点后刷新）</p>
+      <h2 className="text-sm font-medium text-ink-secondary">可用模型（按端点）</h2>
+      {groups.length === 0 ? (
+        <p className="text-sm text-ink-mute">暂无模型（在端点中配置模型清单或锁定模型）</p>
       ) : (
-        <div className="flex flex-wrap gap-2">
-          {models.map((m, i) => (
-            <Badge key={`${m.id}-${i}`} variant="muted">
-              {m.id}
-            </Badge>
+        <div className="flex flex-col gap-3">
+          {groups.map((g) => (
+            <div key={g.name} className="flex flex-col gap-1.5">
+              <span className="text-xs text-ink-mute">
+                {g.name} <span className="text-ink-disabled">({g.models.length})</span>
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {g.models.map((m, i) => (
+                  <Badge key={`${m}-${i}`} variant="muted">
+                    {m}
+                  </Badge>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       )}
