@@ -21,9 +21,11 @@ interface Props {
   endpoint: Endpoint;
   onEdit: (e: Endpoint) => void;
   draggable: boolean;
+  /** useSortable 的 handleRef；存在时 grip 图标作为拖拽手柄，筛选态下不传。 */
+  dragHandleRef?: (element: Element | null) => void;
 }
 
-export function EndpointCard({ endpoint, onEdit, draggable }: Props) {
+export function EndpointCard({ endpoint, onEdit, draggable, dragHandleRef }: Props) {
   const qc = useQueryClient();
   const invalidate = () => qc.invalidateQueries({ queryKey: ["endpoints"] });
 
@@ -62,9 +64,17 @@ export function EndpointCard({ endpoint, onEdit, draggable }: Props) {
   return (
     <Card>
       <CardContent className="flex items-center gap-3 px-4 py-3">
-        <GripVerticalIcon
-          className={`size-4 shrink-0 ${draggable ? "cursor-grab text-ink-mute" : "text-ink-disabled"}`}
-        />
+        {draggable && dragHandleRef ? (
+          <span
+            ref={dragHandleRef}
+            aria-label="拖动以排序"
+            className="shrink-0 cursor-grab touch-none text-ink-mute"
+          >
+            <GripVerticalIcon className="size-4" />
+          </span>
+        ) : (
+          <GripVerticalIcon className="size-4 shrink-0 text-ink-disabled" />
+        )}
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex items-center gap-2">
             <span className="truncate font-medium">{endpoint.name}</span>
