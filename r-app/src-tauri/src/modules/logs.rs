@@ -16,13 +16,25 @@ static BUFFER: OnceLock<Mutex<VecDeque<LogLine>>> = OnceLock::new();
 static APP: OnceLock<AppHandle> = OnceLock::new();
 static LEVEL: AtomicU8 = AtomicU8::new(2); // 0=trace 1=debug 2=info 3=warn 4=error
 
+/// 结构化字段（tracing 事件的 key=value，message 除外）。
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LogField {
+    pub key: String,
+    pub value: String,
+}
+
 /// 一条日志（推送给前端 / 环形缓冲）。
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LogLine {
     pub time: String,
     pub level: String,
+    /// 事件来源（tracing target，通常为模块路径）。
+    pub target: String,
     pub message: String,
+    /// 结构化字段（key=value），不含 message。
+    pub fields: Vec<LogField>,
 }
 
 fn buffer() -> &'static Mutex<VecDeque<LogLine>> {
@@ -64,11 +76,30 @@ pub fn recent() -> Vec<LogLine> {
     buffer().lock().unwrap().iter().cloned().collect()
 }
 
-struct MessageVisitor(String);
-impl Visit for MessageVisitor {
+#[derive(Default)]
+struct LogVisitor {
+    message: String,
+    fields: Vec<LogField>,
+}
+impl Visit for LogVisitor {
+    fn record_str(&mut self, field: &Field, value: &str) {
+        if field.name() == "message" {
+            self.message = value.to_string();
+        } else {
+            self.fields.push(LogField {
+                key: field.name().to_string(),
+                value: value.to_string(),
+            });
+        }
+    }
     fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
         if field.name() == "message" {
-            self.0 = format!("{value:?}");
+            self.message = format!("{value:?}");
+        } else {
+            self.fields.push(LogField {
+                key: field.name().to_string(),
+                value: format!("{value:?}"),
+            });
         }
     }
 }
@@ -82,12 +113,14 @@ impl<S: Subscriber> Layer<S> for CaptureLayer {
         if level_num(level) < LEVEL.load(Ordering::Relaxed) {
             return;
         }
-        let mut visitor = MessageVisitor(String::new());
+        let mut visitor = LogVisitor::default();
         event.record(&mut visitor);
         let line = LogLine {
             time: chrono::Local::now().format("%H:%M:%S%.3f").to_string(),
             level: level.to_string(),
-            message: visitor.0,
+            target: event.metadata().target().to_string(),
+            message: visitor.message,
+            fields: visitor.fields,
         };
         {
             let mut buf = buffer().lock().unwrap();
