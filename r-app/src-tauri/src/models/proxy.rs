@@ -1,13 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-/// 客户端请求格式（决定是否需要走转换器）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ClientFormat {
-    Claude,
-    OpenAiChat,
-}
-
 /// 代理运行状态：`get_proxy_status` 返回值，并经 `proxy-status-changed` 事件推送前端。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

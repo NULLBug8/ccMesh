@@ -12,6 +12,8 @@ pub const ENDPOINT_QUERY_ALT: &str = "ep";
 #[derive(Debug, Default, Clone)]
 pub struct Resolution {
     pub endpoint: Option<Endpoint>,
+    /// 每请求模型覆盖（`@端点/模型` 语法解析所得，已有单测）；转发侧应用待接入，暂保留。
+    #[allow(dead_code)]
     pub model_override: Option<String>,
     /// 指定了端点名但未找到/未启用 → 错误信息（调用方应返回 400）。
     pub not_found: Option<String>,

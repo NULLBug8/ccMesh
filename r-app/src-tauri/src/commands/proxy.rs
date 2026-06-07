@@ -70,7 +70,7 @@ pub async fn start_proxy(app: AppHandle, state: State<'_, AppState>) -> AppResul
     }
     let port = read_port(&state);
     let pool = state.db_pool.clone();
-    let handle = start_server(app.clone(), pool, port, state.stats.clone()).await?;
+    let handle = start_server(pool, port, state.stats.clone()).await?;
     {
         *state.proxy.lock().unwrap() = Some(handle);
     }

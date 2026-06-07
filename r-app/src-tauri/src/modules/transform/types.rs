@@ -12,7 +12,6 @@ pub struct StreamContext {
     pub current_tool_id: String,
     pub current_tool_name: String,
     pub tool_arguments: String,
-    pub finish_reason_sent: bool,
     pub message_stop_sent: bool,
     pub model_name: String,
     pub input_tokens: i64,

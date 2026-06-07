@@ -5,7 +5,6 @@ use axum::body::{Body, Bytes};
 use axum::extract::State;
 use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
-use tauri::AppHandle;
 use tokio_util::sync::CancellationToken;
 
 use futures::StreamExt;
@@ -53,15 +52,6 @@ impl ActiveRequests {
         }
     }
 
-    pub fn has_active(&self, name: &str) -> bool {
-        self.inner
-            .lock()
-            .unwrap()
-            .get(name)
-            .map(|e| e.count > 0)
-            .unwrap_or(false)
-    }
-
     /// 取消该端点所有在途请求并换发新令牌（手动切换用）。
     pub fn cancel(&self, name: &str) {
         let mut g = self.inner.lock().unwrap();
@@ -84,7 +74,6 @@ pub struct ProxyState {
     pub claude_cli_ua: String,
     pub rotation: Rotation,
     pub active: ActiveRequests,
-    pub app_handle: AppHandle,
     pub stats: Arc<StatsAggregator>,
     pub current_endpoint: Mutex<Option<String>>,
 }

@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 
-use tauri::{AppHandle, State};
+use tauri::State;
 
 use crate::error::AppResult;
 use crate::models::config::AppConfig;
@@ -23,7 +23,6 @@ pub fn get_all_config(state: State<AppState>) -> AppResult<BTreeMap<String, Stri
 /// 写入若干配置键；端口变更且代理运行中则在新端口重启代理。
 #[tauri::command]
 pub async fn set_config(
-    app: AppHandle,
     state: State<'_, AppState>,
     patch: HashMap<String, String>,
 ) -> AppResult<AppConfig> {
@@ -52,7 +51,7 @@ pub async fn set_config(
                     .unwrap_or(3000u16)
             };
             let new_handle =
-                start_server(app.clone(), state.db_pool.clone(), port, state.stats.clone()).await?;
+                start_server(state.db_pool.clone(), port, state.stats.clone()).await?;
             *state.proxy.lock().unwrap() = Some(new_handle);
         }
     }

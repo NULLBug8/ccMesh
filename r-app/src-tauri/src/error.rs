@@ -18,9 +18,6 @@ pub enum AppError {
     #[error("代理错误: {0}")]
     Proxy(String),
 
-    #[error("转换错误: {0}")]
-    Transform(String),
-
     #[error("WebDAV 错误: {0}")]
     WebDav(String),
 

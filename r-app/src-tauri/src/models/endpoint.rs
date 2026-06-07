@@ -27,17 +27,6 @@ pub struct Endpoint {
     pub updated_at: String,
 }
 
-/// 端点多凭证（Token 轮换的凭证项）。对应 `endpoint_credentials` 表。
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EndpointCredential {
-    pub id: i64,
-    pub endpoint_id: i64,
-    pub api_key: String,
-    pub enabled: bool,
-    pub sort_order: i64,
-}
-
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateEndpointRequest {

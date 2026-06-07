@@ -20,35 +20,24 @@ impl UpstreamFormat {
 
 /// 格式转换器：客户端固定为 Claude Messages 格式，按上游格式双向转换。
 pub trait Transformer: Send + Sync {
-    fn name(&self) -> &'static str;
-
     /// Claude 请求体 → 上游请求体。`endpoint_model` 为端点配置的模型名（覆盖请求 model）。
     fn transform_request(
         &self,
         claude_request: &Value,
         endpoint_model: Option<&str>,
     ) -> crate::error::AppResult<Value>;
-
-    /// 上游（非流式）响应体 → Claude 响应体。
-    fn transform_response(&self, upstream_response: &Value) -> crate::error::AppResult<Value>;
 }
 
 /// 直通转换器（上游本身即 Claude 格式）。
 pub struct IdentityTransformer;
 
 impl Transformer for IdentityTransformer {
-    fn name(&self) -> &'static str {
-        "claude"
-    }
     fn transform_request(
         &self,
         req: &Value,
         _endpoint_model: Option<&str>,
     ) -> crate::error::AppResult<Value> {
         Ok(req.clone())
-    }
-    fn transform_response(&self, resp: &Value) -> crate::error::AppResult<Value> {
-        Ok(resp.clone())
     }
 }
 

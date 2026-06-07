@@ -11,7 +11,6 @@ use axum::{
     Json, Router,
 };
 use serde_json::json;
-use tauri::AppHandle;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
@@ -76,7 +75,6 @@ fn build_router(state: Arc<ProxyState>) -> Router {
 
 /// 在本地端口启动代理服务。返回运行句柄。
 pub async fn start_proxy(
-    app_handle: AppHandle,
     db_pool: DbPool,
     port: u16,
     stats: Arc<StatsAggregator>,
@@ -122,7 +120,6 @@ pub async fn start_proxy(
         claude_cli_ua: cfg.claude_cli_ua,
         rotation: Rotation::new(),
         active: ActiveRequests::default(),
-        app_handle,
         stats,
         current_endpoint: Mutex::new(None),
     });

@@ -10,14 +10,8 @@ use crate::modules::transform::types::{
 pub struct ClaudeOpenAiTransformer;
 
 impl Transformer for ClaudeOpenAiTransformer {
-    fn name(&self) -> &'static str {
-        "openai"
-    }
     fn transform_request(&self, req: &Value, endpoint_model: Option<&str>) -> AppResult<Value> {
         Ok(claude_request_to_openai(req, endpoint_model))
-    }
-    fn transform_response(&self, resp: &Value) -> AppResult<Value> {
-        Ok(openai_response_to_claude(resp))
     }
 }
 
