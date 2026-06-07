@@ -1,3 +1,4 @@
+pub mod backup;
 pub mod config;
 pub mod endpoint;
 pub mod health;

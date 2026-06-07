@@ -21,6 +21,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let handle = app.handle().clone();
 
@@ -117,6 +118,8 @@ pub fn run() {
             commands::usage::get_usage_summary,
             commands::usage::get_usage_by_model,
             commands::usage::get_usage_by_day,
+            commands::backup::export_config,
+            commands::backup::import_config,
             commands::config::get_config,
             commands::config::get_all_config,
             commands::config::set_config,
