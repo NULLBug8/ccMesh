@@ -33,6 +33,7 @@ export function subscribe<T>(
 /** 后端事件名常量（kebab-case），随阶段补充。 */
 export const Events = {
   statsUpdated: "stats-updated",
+  requestLogged: "request-logged",
   proxyStatusChanged: "proxy-status-changed",
   logLine: "log-line",
   updateProgress: "update-progress",
