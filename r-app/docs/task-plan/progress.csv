@@ -44,10 +44,10 @@ WP9,端点熔断,9.2,rotation.rs 增 categorize 错误分类+单测,后端,,6;15
 WP9,端点熔断,9.3,ProxyState增breakers+handle_proxy选路集成,后端,9.1;9.2,2;3;5;6;7;8;9;12,完成,claude,2026-06-08,2026-06-08,is_available跳过/allow_request许可/record三路回传/全Open兜底/显式绕过/转换发事件
 WP9,端点熔断,9.4,get_endpoint_health命令+endpoint-health-changed事件+前端封装,后端+前端,9.3,10;11;12,完成,claude,2026-06-08,2026-06-08,事件仅状态转换时发;前端 healthApi+circuitDot
 WP9,端点熔断,9.5,前端实时展示 端点列表健康灯+端点页熔断徽标+单测,前端,9.4,10;11;12,完成,claude,2026-06-08,2026-06-08,ServiceCard健康灯+EndpointCard徽标(共享查询);事件刷新
-WP10,代理体系化,10.1,client.rs 决策纯函数+build_client+真值表单测,后端,,1;2;4;5;13,待开始,claude,,,should_use_proxy/should_proxy_update
-WP10,代理体系化,10.2,配置增 proxyEnabled/proxyForUpdate+set_config重启触发,后端+前端,,6;7;12,待开始,claude,,,设备相关不进 SAFE_CONFIG_KEYS
-WP10,代理体系化,10.3,转发集成 ProxyState+proxy_enabled+静默回退warn,后端,10.1;10.2,2;4;11;12,待开始,claude,,,send_upstream want=use_proxy||proxyEnabled
-WP10,代理体系化,10.4,获取模型走代理(去no_proxy)+fetch_endpoint_models传use_proxy,后端+前端,10.1;10.2,3;4,待开始,claude,,,models.rs 两处
-WP10,代理体系化,10.5,test_endpoint决策更新+新增test_proxy连通性命令,后端+前端,10.1,8;9,待开始,claude,,,generate_204 连通性检测
-WP10,代理体系化,10.6,更新走代理 update.rs接State+updater_builder.proxy,后端,10.1;10.2,6;7,待开始,claude,,,proxyForUpdate&&地址非空
-WP10,代理体系化,10.7,设置页 启用代理/代理服务器+测试/代理更新(门控)+单测,前端,10.2;10.5,6;7;8;9,待开始,claude,,,按截图;启用代理关时代理更新禁用
+WP10,代理体系化,10.1,client.rs 决策纯函数+build_client+真值表单测,后端,,1;2;4;5;13,完成,claude,2026-06-08,2026-06-08,should_use_proxy/should_proxy_update;3 单测
+WP10,代理体系化,10.2,配置增 proxyEnabled/proxyForUpdate+set_config重启触发,后端+前端,,6;7;12,完成,claude,2026-06-08,2026-06-08,设备相关不进 SAFE_CONFIG_KEYS
+WP10,代理体系化,10.3,转发集成 ProxyState+proxy_enabled+静默回退warn,后端,10.1;10.2,2;4;11;12,完成,claude,2026-06-08,2026-06-08,send_upstream want=use_proxy||proxyEnabled
+WP10,代理体系化,10.4,获取模型走代理(去no_proxy)+fetch_endpoint_models传use_proxy,后端+前端,10.1;10.2,3;4,完成,claude,2026-06-08,2026-06-08,models.rs 两处+前端表单传参
+WP10,代理体系化,10.5,test_endpoint决策更新+新增test_proxy连通性命令,后端+前端,10.1,8;9,完成,claude,2026-06-08,2026-06-08,generate_204;严格代理不回退避免误判
+WP10,代理体系化,10.6,更新走代理 update.rs接State+updater_builder.proxy,后端,10.1;10.2,6;7,完成,claude,2026-06-08,2026-06-08,proxyForUpdate&&地址非空;无scheme补http
+WP10,代理体系化,10.7,设置页 启用代理/代理服务器+测试/代理更新(门控),前端,10.2;10.5,6;7;8;9,完成,claude,2026-06-08,2026-06-08,按截图;启用代理关时代理更新禁用;门控逻辑由后端真值表覆盖

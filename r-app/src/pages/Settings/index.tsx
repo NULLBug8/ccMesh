@@ -1,8 +1,9 @@
-import type { ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
 
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -40,6 +41,22 @@ export function Settings() {
       qc.invalidateQueries({ queryKey: ["config"] });
     } catch (e) {
       toast.error(`保存失败：${errMsg(e)}`);
+    }
+  };
+
+  const [testingProxy, setTestingProxy] = useState(false);
+  const proxyRef = useRef<HTMLInputElement>(null);
+  const testProxy = async () => {
+    const url = (proxyRef.current?.value ?? "").trim() || cfg?.proxyUrl || "";
+    setTestingProxy(true);
+    try {
+      const r = await configApi.testProxy(url);
+      if (r.success) toast.success(`${r.message}（${r.latencyMs}ms）`);
+      else toast.error(r.message);
+    } catch (e) {
+      toast.error(`测试失败：${errMsg(e)}`);
+    } finally {
+      setTestingProxy(false);
     }
   };
 
@@ -162,16 +179,58 @@ export function Settings() {
       </section>
 
       <section className="flex flex-col gap-2">
+        <div>
+          <h2 className="text-sm font-medium text-ink-secondary">代理</h2>
+          <p className="text-xs text-ink-mute">网络代理设置</p>
+        </div>
+        <div className="flex flex-col divide-y divide-edge-subtle rounded-lg border border-edge">
+          <Row label="启用代理">
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-ink-mute">通过代理路由所有网络请求</span>
+              <Switch
+                checked={cfg.proxyEnabled}
+                onCheckedChange={(v) => save({ proxyEnabled: String(v) })}
+                aria-label="启用代理"
+              />
+            </div>
+          </Row>
+          <Row label="代理服务器">
+            <div className="flex items-center gap-2">
+              <Input
+                ref={proxyRef}
+                className="w-56"
+                placeholder="http://127.0.0.1:7897"
+                defaultValue={cfg.proxyUrl}
+                onBlur={(e) => save({ proxyUrl: e.target.value })}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={testProxy}
+                disabled={testingProxy}
+              >
+                测试
+              </Button>
+            </div>
+          </Row>
+          <Row label="代理更新">
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-ink-mute">通过代理检查和下载应用更新</span>
+              <Switch
+                checked={cfg.proxyForUpdate}
+                disabled={!cfg.proxyEnabled}
+                onCheckedChange={(v) => save({ proxyForUpdate: String(v) })}
+                aria-label="代理更新"
+              />
+            </div>
+          </Row>
+        </div>
+        <p className="px-1 text-xs text-ink-mute">例如 127.0.0.1:7897 或 http://proxy:8080</p>
+      </section>
+
+      <section className="flex flex-col gap-2">
         <h2 className="text-sm font-medium text-ink-secondary">系统 / 高级</h2>
         <div className="flex flex-col divide-y divide-edge-subtle rounded-lg border border-edge">
-          <Row label="代理地址">
-            <Input
-              className="w-64"
-              placeholder="http://127.0.0.1:7890"
-              defaultValue={cfg.proxyUrl}
-              onBlur={(e) => save({ proxyUrl: e.target.value })}
-            />
-          </Row>
           <Row label="OpenAI 端点 UA（伪装，空=透传客户端）">
             <Input
               className="w-64"
