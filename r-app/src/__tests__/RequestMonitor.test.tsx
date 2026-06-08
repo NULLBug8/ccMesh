@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { fmtTime, RequestLogTable } from "@/components/business/RequestMonitor";
+import { fmtDateTime, fmtTime, RequestLogTable } from "@/components/business/RequestMonitor";
 import type { RequestLog } from "@/services/modules/stats";
 
 const log: RequestLog = {
@@ -71,5 +71,12 @@ describe("fmtTime", () => {
   it("下午为 24 小时制（无上午/下午前缀）", () => {
     const ts = new Date(2026, 5, 7, 23, 59, 59).getTime();
     expect(fmtTime(ts)).toBe("23:59:59");
+  });
+});
+
+describe("fmtDateTime", () => {
+  it("展示 年-月-日 时:分:秒（零填充，24 小时制）", () => {
+    const ts = new Date(2026, 5, 7, 9, 5, 3).getTime();
+    expect(fmtDateTime(ts)).toBe("2026-06-07 09:05:03");
   });
 });

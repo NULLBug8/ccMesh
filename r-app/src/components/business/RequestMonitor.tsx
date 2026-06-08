@@ -166,6 +166,18 @@ export function fmtTime(ts: number): string {
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
+/** 请求日期 年-月-日（零填充，本地时区）。 */
+export function fmtDate(ts: number): string {
+  const d = new Date(ts);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** 请求时间完整展示：年-月-日 时:分:秒（24 小时制）。 */
+export function fmtDateTime(ts: number): string {
+  return `${fmtDate(ts)} ${fmtTime(ts)}`;
+}
+
 function statusDot(code: number | null): "success" | "warning" | "danger" {
   if (code == null) return "danger";
   if (code < 300) return "success";
@@ -192,7 +204,7 @@ function RequestRow({ log }: { log: RequestLog }) {
         className="px-3 py-2 whitespace-nowrap"
         title={new Date(log.ts).toLocaleString()}
       >
-        <TabularText>{fmtTime(log.ts)}</TabularText>
+        <TabularText>{fmtDateTime(log.ts)}</TabularText>
       </td>
       <td className="px-3 py-2">{log.endpointName}</td>
       <td
