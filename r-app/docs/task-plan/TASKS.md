@@ -155,3 +155,35 @@
 ## 提交策略（第三轮）
 
 - `9.1/9.2 熔断器+错误分类（纯逻辑+单测）` 一组；`9.3 handle_proxy 集成` 一组；`9.4 命令+事件` 一组；`9.5 前端展示` 一组。
+
+---
+
+# TASKS（第四轮）— 代理功能体系化（直连/全局/专用）
+
+> 关联 PRD：[PRD-4.md](./PRD-4.md) · 子文档：[09-proxy-redesign.md](./09-proxy-redesign.md)
+> 原始需求：[需求4.txt](./需求4.txt) · 截图 `设置代理截图.png`
+> 背景：统一代理决策（端点 use_proxy > 全局 proxyEnabled > 专用 proxyForUpdate）；获取模型/更新接入代理；设置页三件套；修静默回退直连。
+
+## 工作包总览
+
+| 阶段 | 工作包 | 子文档 | 前置 | 说明 |
+|---|---|---|---|---|
+| WP10 | 代理功能体系化 | [09-proxy-redesign.md](./09-proxy-redesign.md) | 无 | 决策纯函数+公共 client、配置(启用代理/代理更新)、转发/获取模型/测试/更新接入、设置页三件套 |
+
+## 任务清单（WP10）
+
+| 任务编号 | 标题 | 所属层 | 前置 | PRD Story |
+|---|---|---|---|---|
+| 10.1 | client.rs：should_use_proxy/should_proxy_update/build_client + 真值表单测 | 后端 | — | 1,2,4,5,13 |
+| 10.2 | 配置：AppConfig/config_repo/前端 config.ts 增 proxyEnabled/proxyForUpdate；set_config 重启触发加 proxyEnabled | 后端+前端 | — | 6,7,12 |
+| 10.3 | 转发集成：ProxyState+proxy_enabled；send_upstream 决策 + 静默回退 warn | 后端 | 10.1,10.2 | 2,4,11,12 |
+| 10.4 | 获取模型走代理：models.rs 去 no_proxy 按决策构建；fetch_endpoint_models +use_proxy；前端传参 | 后端+前端 | 10.1,10.2 | 3,4 |
+| 10.5 | 测试：test_endpoint 决策更新 + 新增 test_proxy 命令(连通性) + 注册 + 前端封装 | 后端+前端 | 10.1 | 8,9 |
+| 10.6 | 更新走代理：update.rs check/download 接 State，proxyForUpdate 时经代理 updater | 后端 | 10.1,10.2 | 6,7 |
+| 10.7 | 设置页 UI：启用代理/代理服务器+测试/代理更新(门控) + 单测 | 前端 | 10.2,10.5 | 6,7,8,9 |
+
+构建顺序：10.1/10.2 地基 → 10.3/10.4/10.5/10.6 各路径 → 10.7 前端 UI。
+
+## 提交策略（第四轮）
+
+- `10.1/10.2 决策+配置` 一组；`10.3 转发` 一组；`10.4 获取模型` 一组；`10.5 测试` 一组；`10.6 更新` 一组；`10.7 设置页` 一组。
