@@ -15,12 +15,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RANGE_OPTIONS, rangeDates, startOfTodayMs, type RangeKey } from "@/lib/range";
-import {
-  usageApi,
-  type DailyUsage,
-  type ModelUsage,
-  type UsageAppFilter,
-} from "@/services/modules/usage";
+import { usageApi, type DayModelUsage, type UsageAppFilter } from "@/services/modules/usage";
 
 const APP_TABS: { key: UsageAppFilter; label: string }[] = [
   { key: "all", label: "全部" },
@@ -36,7 +31,7 @@ function appLabel(app: string): string {
   return app;
 }
 
-/** 用量统计（MVP）：读取本机 Claude Code / Codex 会话日志，按 app/模型/天汇总 token。 */
+/** 用量统计（MVP）：读取本机 Claude Code / Codex 会话日志，按 日期×来源×模型 汇总 token。 */
 export function UsagePanel() {
   const qc = useQueryClient();
   const [app, setApp] = useState<UsageAppFilter>("all");
@@ -69,13 +64,9 @@ export function UsagePanel() {
     queryKey: ["usage", "summary", app, start ?? null, end ?? null],
     queryFn: () => usageApi.getSummary({ appType, start, end }),
   });
-  const byModel = useQuery({
-    queryKey: ["usage", "model", app, start ?? null, end ?? null],
-    queryFn: () => usageApi.getByModel({ appType, start, end }),
-  });
-  const byDay = useQuery({
-    queryKey: ["usage", "day", app, start ?? null, end ?? null],
-    queryFn: () => usageApi.getByDay({ appType, start, end }),
+  const byDayModel = useQuery({
+    queryKey: ["usage", "day-model", app, start ?? null, end ?? null],
+    queryFn: () => usageApi.getByDayModel({ appType, start, end }),
   });
 
   const s = summary.data;
@@ -148,69 +139,33 @@ export function UsagePanel() {
         />
       </div>
 
-      <ModelTable rows={byModel.data ?? []} />
-      <DayTable rows={byDay.data ?? []} />
+      <DayModelTable rows={byDayModel.data ?? []} />
     </div>
   );
 }
 
-function ModelTable({ rows }: { rows: ModelUsage[] }) {
-  return (
-    <section className="flex flex-col gap-2">
-      <h2 className="text-sm font-medium text-ink-secondary">按模型</h2>
-      {rows.length === 0 ? (
-        <p className="text-sm text-ink-mute">暂无用量数据</p>
-      ) : (
-        <div className="overflow-hidden rounded-lg border border-edge">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-edge text-xs text-ink-secondary">
-                <th className="px-3 py-2 text-left font-medium">来源</th>
-                <th className="px-3 py-2 text-left font-medium">模型</th>
-                <th className="px-3 py-2 text-right font-medium">请求</th>
-                <th className="px-3 py-2 text-right font-medium">输入</th>
-                <th className="px-3 py-2 text-right font-medium">输出</th>
-                <th className="px-3 py-2 text-right font-medium">缓存</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r, i) => (
-                <tr
-                  key={`${r.appType}-${r.model}-${i}`}
-                  className="border-b border-edge-subtle last:border-0"
-                >
-                  <td className="px-3 py-2 text-ink-secondary">
-                    {appLabel(r.appType)}
-                  </td>
-                  <td className="px-3 py-2">{r.model || "—"}</td>
-                  <td className="px-3 py-2 text-right">
-                    <TabularText>{fmt(r.requests)}</TabularText>
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <TabularText>{fmt(r.inputTokens)}</TabularText>
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <TabularText>{fmt(r.outputTokens)}</TabularText>
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <TabularText>
-                      {fmt(r.cacheCreationTokens + r.cacheReadTokens)}
-                    </TabularText>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
-  );
+interface DateGroup {
+  date: string;
+  rows: DayModelUsage[];
 }
 
-function DayTable({ rows }: { rows: DailyUsage[] }) {
+/** 按日期分组（后端已按 date 倒序 + 组内 token 降序排好，仅需聚合连续同日期行）。 */
+export function groupByDate(rows: DayModelUsage[]): DateGroup[] {
+  const groups: DateGroup[] = [];
+  for (const r of rows) {
+    const last = groups[groups.length - 1];
+    if (last && last.date === r.date) last.rows.push(r);
+    else groups.push({ date: r.date, rows: [r] });
+  }
+  return groups;
+}
+
+/** 多维合并表：日期(rowspan 合并) × 来源 × 模型 × 指标。 */
+function DayModelTable({ rows }: { rows: DayModelUsage[] }) {
+  const groups = groupByDate(rows);
   return (
     <section className="flex flex-col gap-2">
-      <h2 className="text-sm font-medium text-ink-secondary">按天</h2>
+      <h2 className="text-sm font-medium text-ink-secondary">按日期 · 模型</h2>
       {rows.length === 0 ? (
         <p className="text-sm text-ink-mute">暂无用量数据</p>
       ) : (
@@ -220,6 +175,7 @@ function DayTable({ rows }: { rows: DailyUsage[] }) {
               <tr className="border-b border-edge text-xs text-ink-secondary">
                 <th className="px-3 py-2 text-left font-medium">日期</th>
                 <th className="px-3 py-2 text-left font-medium">来源</th>
+                <th className="px-3 py-2 text-left font-medium">模型</th>
                 <th className="px-3 py-2 text-right font-medium">请求</th>
                 <th className="px-3 py-2 text-right font-medium">输入</th>
                 <th className="px-3 py-2 text-right font-medium">输出</th>
@@ -227,33 +183,45 @@ function DayTable({ rows }: { rows: DailyUsage[] }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r, i) => (
-                <tr
-                  key={`${r.date}-${r.appType}-${i}`}
-                  className="border-b border-edge-subtle last:border-0"
-                >
-                  <td className="px-3 py-2">
-                    <TabularText>{r.date}</TabularText>
-                  </td>
-                  <td className="px-3 py-2 text-ink-secondary">
-                    {appLabel(r.appType)}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <TabularText>{fmt(r.requests)}</TabularText>
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <TabularText>{fmt(r.inputTokens)}</TabularText>
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <TabularText>{fmt(r.outputTokens)}</TabularText>
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <TabularText>
-                      {fmt(r.cacheCreationTokens + r.cacheReadTokens)}
-                    </TabularText>
-                  </td>
-                </tr>
-              ))}
+              {groups.map((g, gi) =>
+                g.rows.map((r, i) => (
+                  <tr
+                    key={`${g.date}-${r.appType}-${r.model}-${i}`}
+                    className={
+                      i === 0 && gi > 0
+                        ? "border-t border-edge"
+                        : "border-t border-edge-subtle"
+                    }
+                  >
+                    {i === 0 && (
+                      <td
+                        rowSpan={g.rows.length}
+                        className="border-r border-edge-subtle px-3 py-2 align-top"
+                      >
+                        <TabularText>{g.date}</TabularText>
+                      </td>
+                    )}
+                    <td className="px-3 py-2 text-ink-secondary">
+                      {appLabel(r.appType)}
+                    </td>
+                    <td className="px-3 py-2">{r.model || "—"}</td>
+                    <td className="px-3 py-2 text-right">
+                      <TabularText>{fmt(r.requests)}</TabularText>
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <TabularText>{fmt(r.inputTokens)}</TabularText>
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <TabularText>{fmt(r.outputTokens)}</TabularText>
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <TabularText>
+                        {fmt(r.cacheCreationTokens + r.cacheReadTokens)}
+                      </TabularText>
+                    </td>
+                  </tr>
+                )),
+              )}
             </tbody>
           </table>
         </div>

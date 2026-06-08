@@ -10,19 +10,11 @@ export interface UsageSummary {
   totalCacheReadTokens: number;
 }
 
-export interface ModelUsage {
-  appType: string;
-  model: string;
-  requests: number;
-  inputTokens: number;
-  outputTokens: number;
-  cacheCreationTokens: number;
-  cacheReadTokens: number;
-}
-
-export interface DailyUsage {
+/** 按天 × 来源 × 模型聚合（多维合并表：前端按 date 行合并展示）。 */
+export interface DayModelUsage {
   date: string;
   appType: string;
+  model: string;
   requests: number;
   inputTokens: number;
   outputTokens: number;
@@ -51,14 +43,9 @@ export const usageApi = {
       end: f.end,
       appType: f.appType,
     }),
-  getByModel: (f: UsageFilter = {}) =>
-    request<ModelUsage[]>("get_usage_by_model", {
-      start: f.start,
-      end: f.end,
-      appType: f.appType,
-    }),
-  getByDay: (f: UsageFilter = {}) =>
-    request<DailyUsage[]>("get_usage_by_day", {
+  /** 按天 × 来源 × 模型聚合（date 倒序、组内 token 降序）。 */
+  getByDayModel: (f: UsageFilter = {}) =>
+    request<DayModelUsage[]>("get_usage_by_day_model", {
       start: f.start,
       end: f.end,
       appType: f.appType,
