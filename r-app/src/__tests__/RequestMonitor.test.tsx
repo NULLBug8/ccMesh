@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { RequestLogTable } from "@/components/business/RequestMonitor";
+import { fmtTime, RequestLogTable } from "@/components/business/RequestMonitor";
 import type { RequestLog } from "@/services/modules/stats";
 
 const log: RequestLog = {
@@ -53,5 +53,23 @@ describe("RequestLogTable", () => {
   it("空数据显示占位", () => {
     render(<RequestLogTable items={[]} />);
     expect(screen.getByText("暂无请求记录")).toBeInTheDocument();
+  });
+});
+
+describe("fmtTime", () => {
+  it("按 24 小时制 时:分:秒 零填充展示", () => {
+    // 用本地时间分量构造，断言与时区无关
+    const ts = new Date(2026, 5, 7, 9, 5, 3).getTime();
+    expect(fmtTime(ts)).toBe("09:05:03");
+  });
+
+  it("午夜为 00:00:00（非 24:00:00）", () => {
+    const ts = new Date(2026, 5, 7, 0, 0, 0).getTime();
+    expect(fmtTime(ts)).toBe("00:00:00");
+  });
+
+  it("下午为 24 小时制（无上午/下午前缀）", () => {
+    const ts = new Date(2026, 5, 7, 23, 59, 59).getTime();
+    expect(fmtTime(ts)).toBe("23:59:59");
   });
 });

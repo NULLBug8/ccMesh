@@ -159,12 +159,11 @@ export function RequestLogTable({ items }: { items: RequestLog[] }) {
   );
 }
 
-function fmtTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+/** 请求时间按 24 小时制 时:分:秒（零填充）展示，避免地区设置带来的上午/下午前缀。 */
+export function fmtTime(ts: number): string {
+  const d = new Date(ts);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
 function statusDot(code: number | null): "success" | "warning" | "danger" {
