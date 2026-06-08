@@ -12,7 +12,7 @@ export function SeaTide() {
       className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]"
     >
       <motion.div
-        className="absolute inset-x-0 bottom-0"
+        className="absolute inset-x-0 bottom-0 overflow-hidden"
         initial={{ height: "0%" }}
         animate={{ height: "26%" }}
         transition={{ duration: 0.8, ease: "easeOut" }}
