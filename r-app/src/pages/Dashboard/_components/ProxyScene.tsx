@@ -1,54 +1,33 @@
 import "./proxy-scene.css";
 
 /**
- * 本地代理卡片背景：日出/日落风景。
- * `running` 为真时太阳升起（开启），为假时落下（关闭）；其余元素（山/水/云/芦苇）为氛围。
+ * 本地代理卡片背景：雪山 + 日落。
+ * `running` 为真时太阳自山脊后升起、雪峰染暖色高山辉；为假时落回山后。
+ * `dark` 按主题切换氛围元素：暗色显星点、亮色显飘云（颜色色板由 CSS 的 .dark 覆盖）。
  * 纯展示、不接收指针事件；尊重 prefers-reduced-motion（见 proxy-scene.css）。
  */
-export function ProxyScene({ running }: { running: boolean }) {
+export function ProxyScene({
+  running,
+  dark = false,
+}: {
+  running: boolean;
+  dark?: boolean;
+}) {
   return (
     <div aria-hidden className={running ? "proxy-scene running" : "proxy-scene"}>
-      <div className="mountain" />
-      <div className="mountain mountain-2" />
-      <div className="mountain mountain-3" />
-      <div className="sun-container sun-container-1" />
-      <div className="sun-container">
-        <div className="sun" />
-      </div>
-      <div className="cloud" />
-      <div className="cloud cloud-1" />
-      <div className="sun-container sun-container-reflection">
-        <div className="sun" />
-      </div>
-      <div className="light" />
-      <div className="light light-1" />
-      <div className="light light-2" />
-      <div className="light light-3" />
-      <div className="light light-4" />
-      <div className="light light-5" />
-      <div className="light light-6" />
-      <div className="light light-7" />
-      <div className="water" />
-      <div className="splash" />
-      <div className="splash delay-1" />
-      <div className="splash delay-2" />
-      <div className="splash splash-4 delay-2" />
-      <div className="splash splash-4 delay-3" />
-      <div className="splash splash-4 delay-4" />
-      <div className="splash splash-stone delay-3" />
-      <div className="splash splash-stone splash-4" />
-      <div className="splash splash-stone splash-5" />
-      <div className="lotus lotus-1" />
-      <div className="lotus lotus-2" />
-      <div className="lotus lotus-3" />
-      <div className="front">
-        <div className="stone" />
-        <div className="grass" />
-        <div className="grass grass-1" />
-        <div className="grass grass-2" />
-        <div className="reed" />
-        <div className="reed reed-1" />
-      </div>
+      <div className="glow" />
+      <div className="sun" />
+      {dark ? (
+        <div className="stars" />
+      ) : (
+        <>
+          <div className="cloud" />
+          <div className="cloud cloud-1" />
+        </>
+      )}
+      <div className="range range-far" />
+      <div className="range range-mid" />
+      <div className="range range-near" />
     </div>
   );
 }

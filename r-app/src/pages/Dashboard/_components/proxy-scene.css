@@ -1,7 +1,9 @@
 /*
- * 本地代理卡片背景：日出/日落风景（源自 task-plan/index.txt 的 landscape 场景）。
- * 作用域化到 .proxy-scene，视口单位 vmin/vh 改为容器查询单位 cqmin/cqh，
- * 使整屏场景等比缩放进卡片。太阳升/落由 .proxy-scene.running 切换（transition 驱动）。
+ * 本地代理卡片背景：雪山 + 日落。
+ * 作用域化到 .proxy-scene；尺寸用容器查询单位 cqmin/cqh 适配卡片。
+ * 代理开启(.running) → 太阳自山脊后升起、雪峰染上暖色高山辉；关闭 → 太阳落回山后。
+ * 主题：亮色为近白天空的白昼雪山，暗色为暮夜雪山（色板见 .dark 覆盖；
+ * 星点/飘云这类元素由组件按主题切换渲染）。
  */
 
 .proxy-scene {
@@ -12,16 +14,38 @@
   container-type: size;
   pointer-events: none;
   z-index: 0;
-  background-image: linear-gradient(var(--v1), var(--s1), var(--v1));
-  /* 场景局部调色板（不污染全局 :root） */
-  --v1: #be91c6;
-  --v2: #8a65cc;
-  --v3: #5e30d9;
-  --transparentv3: #5e30d900;
-  --v4: #3b1895;
-  --s1: #fea798;
-  --s2: #ff846e;
-  --cloud: #fea798;
+
+  /* 亮色：白昼雪山，上冷下暖（日落） */
+  --sky-top: #f6f9fe; /* 近白天空 */
+  --sky-mid: #fdeede; /* 暖白过渡 */
+  --sky-low: #ffd9b0; /* 地平线日落暖 */
+  --sun-core: #fff1cf;
+  --sun: #ffb24d;
+  --glow: #ffc79a;
+  --snow: #ffffff;
+  --snow-shade: #d8e4f3; /* 雪面冷影 */
+  --rock: #aebfd6;
+  --rock-deep: #8ea2c2;
+  --haze: #f6f9fe; /* 远山融入天空的雾色 */
+
+  background:
+    radial-gradient(135% 78% at 60% 96%, var(--sky-low), transparent 58%),
+    linear-gradient(to bottom, var(--sky-top), var(--sky-mid) 60%, var(--sky-low));
+}
+
+/* 暗色：暮夜雪山 */
+.dark .proxy-scene {
+  --sky-top: #0a1330;
+  --sky-mid: #1a2350;
+  --sky-low: #3b2a55;
+  --sun-core: #ffd0a0;
+  --sun: #ff7a3d;
+  --glow: #ff8a55;
+  --snow: #e9f0ff;
+  --snow-shade: #92a4c8;
+  --rock: #3c496b;
+  --rock-deep: #283251;
+  --haze: #131d3e;
 }
 
 .proxy-scene *,
@@ -30,411 +54,171 @@
   position: absolute;
 }
 
-.proxy-scene .front {
-  z-index: 1;
-  bottom: 0;
-  left: 0;
-  right: 0;
-}
-
-.proxy-scene .mountain {
-  border-radius: 180% 80% 0% 0% / 60cqmin 60cqmin 0% 0%;
-  width: 40cqmin;
-  height: 30cqmin;
-  bottom: 50%;
-  left: -10cqmin;
-  background: var(--s1);
-  background-image: linear-gradient(var(--v1), var(--v2) 30%, var(--v3));
-  box-shadow: inset -10px 0 10px -10px var(--s1);
-}
-.proxy-scene .mountain:before {
-  content: "";
-  bottom: 0;
-  width: inherit;
-  height: inherit;
-  background: inherit;
-  border-radius: inherit;
-  transform-origin: bottom center;
-  transform: scaleX(1) scaleY(-0.6);
-  filter: blur(3px);
-}
-
-.proxy-scene .mountain-2 {
-  left: 5cqmin;
-  height: 15cqmin;
-  width: 40cqmin;
-  box-shadow: inset -15px 0 10px -14px var(--s1);
-  border-radius: 120% 50% 0% 0% / 25cqmin 25cqmin 0% 0%;
-  background-image: linear-gradient(var(--v3), var(--v4));
-}
-
-.proxy-scene .mountain-3 {
-  border-radius: 80% 0% 0 0 / 100% 100% 0 0;
-  right: -85cqmin;
-  width: 100cqmin;
-  left: auto;
-  height: 12cqmin;
-  color: var(--v3);
-  background-image: linear-gradient(var(--s1), var(--v4));
-  box-shadow: inset 15px 0 10px -10px var(--s1);
-}
-.proxy-scene .mountain-3:after {
-  content: "";
-  border-radius: 60% 0 0 0 / 100% 0 0 0;
-  background: inherit;
-  width: 100%;
-  height: 0;
-  bottom: 0;
-  right: 20%;
-}
-
-.proxy-scene .lotus {
-  width: 10cqmin;
-  height: 5cqmin;
-  background: conic-gradient(
-    var(--v3) 0deg 40deg,
-    var(--transparentv3) 50deg 70deg,
-    var(--v3) 80deg
+/* 地平线日落辉光（在山体之后） */
+.proxy-scene .glow {
+  inset: 0;
+  background: radial-gradient(
+    42cqmin 30cqmin at 60% 80%,
+    var(--glow),
+    transparent 70%
   );
-  border-radius: 50%;
-}
-.proxy-scene .lotus-1 {
-  bottom: 10cqmin;
-  right: 5cqmin;
-  width: 20cqmin;
-}
-.proxy-scene .lotus-2 {
-  bottom: 20cqmin;
-  right: 15cqmin;
-  height: 3cqmin;
-  transform: skew(-10deg);
-  opacity: 0.5;
-  mix-blend-mode: multiply;
-}
-.proxy-scene .lotus-3 {
-  bottom: 10cqmin;
-  right: 35cqmin;
-  transform: rotate(180deg) skew(-20deg);
-  opacity: 0.8;
-  width: 15cqmin;
-}
-
-.proxy-scene .cloud {
-  width: 80cqmin;
-  height: 6cqmin;
-  background: currentcolor;
-  color: var(--cloud);
-  top: 24cqmin;
-  left: 20cqmin;
-  border-radius: 50%;
-  box-shadow: 30cqmin 0.5cqmin 0 -1cqmin currentcolor,
-    -25cqmin 0 0 -0.6cqmin currentcolor;
-  opacity: 0.3;
-  transform: translate3d(-150cqmin, 0, 0);
-  animation: proxy-scene-clouds 120s infinite;
-  animation-delay: -10s;
-}
-@keyframes proxy-scene-clouds {
-  50% {
-    transform: translate3d(0, 0, 0);
-  }
-  100% {
-    transform: translate3d(150cqmin, 0, 0);
-  }
-}
-.proxy-scene .cloud-1 {
-  left: 60cqmin;
-  top: 15cqmin;
-  opacity: 0.2;
-  filter: blur(1px);
-  animation-delay: 0s;
-  animation-duration: 100s;
-}
-
-.proxy-scene .water {
-  top: 50%;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: linear-gradient(#fea79855, var(--v2));
-  overflow: hidden;
-  box-shadow: inset 0 1px 4px -3px white;
-}
-
-.proxy-scene .stone {
-  bottom: -5cqh;
-  left: 0;
-  height: 20cqmin;
-  width: 40cqmin;
-  background: var(--v4);
-  box-shadow: inset 0 0 20px -5px rgba(0, 0, 0, 0.2);
-  border-radius: 0% 200% 0 0 / 0% 200%;
-}
-.proxy-scene .stone:after {
-  content: "";
-  background: var(--v3);
-  width: 100%;
-  height: 100%;
-  right: -15%;
-  border-radius: inherit;
-  z-index: -1;
-  transform: scaleX(1.3) skew(10deg);
-  box-shadow: inset 0 0 20px -5px rgba(0, 0, 0, 0.4);
-}
-
-.proxy-scene .grass {
-  height: 40cqmin;
-  width: 10cqmin;
-  border-radius: 0 60% 0 0 / 0 100% 0 0;
-  bottom: 0;
-  border-right: 5px solid var(--v4);
-  box-shadow: 1px 0 0 var(--s1);
-  filter: drop-shadow(-0.5cqmin 6cqmin 0 var(--s2))
-    drop-shadow(-4.5cqmin 10cqmin 0 var(--v3));
-}
-.proxy-scene .grass-1 {
-  left: 14cqmin;
-  bottom: -2cqmin;
-  transform: scaleX(-1);
-  box-shadow: 2px 0 0 var(--v4);
-  border-color: var(--v3);
-  filter: drop-shadow(-1cqmin 5cqmin 0 var(--v3))
-    drop-shadow(-80cqmin 5cqmin 0 var(--v4));
-}
-.proxy-scene .grass-2 {
-  right: 0;
-  left: auto;
-  height: 20cqmin;
-  bottom: -2cqmin;
-  transform: scaleX(-1);
-}
-
-.proxy-scene .reed {
-  height: 40cqmin;
-  width: 0.5cqmin;
-  bottom: 0;
-  left: 10cqmin;
-  color: var(--v4);
-  background: currentColor;
-  transform-origin: bottom center;
-  transform: rotate(4deg);
-  box-shadow: inset -1px 0 0 var(--s2), -6cqmin 3cqmin 0 0, 80cqmin 0 0 0;
-  animation: proxy-scene-verticalise 20s infinite;
-}
-.proxy-scene .reed-1 {
-  color: var(--s2);
-  left: 15cqmin;
-  height: 50cqmin;
-  bottom: -5cqmin;
-  transform: rotate(-2deg);
-  animation: proxy-scene-verticalise-1 20s infinite;
-  box-shadow: inset -1px 0 0 var(--s1), 6cqmin 13cqmin 0 0 var(--s1),
-    80cqmin 10cqmin 0 0 var(--v3);
-}
-.proxy-scene .reed:after {
-  content: "";
-  width: 1.5cqmin;
-  height: 10cqmin;
-  background: currentcolor;
-  border-radius: 0.75cqmin;
-  top: 0;
-  left: -0.5cqmin;
-  box-shadow: inherit;
-}
-@keyframes proxy-scene-verticalise {
-  0%,
-  10% {
-    transform: rotate(4deg);
-  }
-  30%,
-  70% {
-    transform: rotate(0);
-  }
-}
-@keyframes proxy-scene-verticalise-1 {
-  0%,
-  10% {
-    transform: rotate(-2deg);
-  }
-  45%,
-  70% {
-    transform: rotate(0) translateY(-6cqmin);
-  }
-}
-
-/* 太阳：默认落在地平线下（停止态），running 时升入天空（transition 驱动升/落） */
-.proxy-scene .sun {
-  background: white;
-  border-radius: 50%;
-  width: 20cqmin;
-  height: 20cqmin;
-  left: calc(60% - 10cqmin);
-  top: 100%;
-  transform: translate3d(0, 120%, 0);
-  box-shadow: 0 0 10px white;
-  transition: transform 1.6s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.proxy-scene.running .sun {
-  transform: translate3d(0, -175%, 0);
-}
-
-.proxy-scene .sun-container {
-  overflow: hidden;
-  width: 100%;
-  height: 50%;
-}
-
-.proxy-scene .sun-container-1:after {
-  content: "";
-  left: 0;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  background: radial-gradient(circle at 60% 100%, var(--s2), transparent);
-  mix-blend-mode: color-burn;
-  opacity: 0;
+  opacity: 0.4;
   transition: opacity 1.6s ease;
 }
-.proxy-scene.running .sun-container-1:after {
-  opacity: 1;
+.proxy-scene.running .glow {
+  opacity: 0.92;
 }
 
-.proxy-scene .sun-container-reflection {
+/* 日落太阳：停止时落于山后，running 时升起（transition 驱动升/落，在山体之后） */
+.proxy-scene .sun {
+  width: 24cqmin;
+  height: 24cqmin;
+  left: 56%;
   top: 50%;
-  background: radial-gradient(circle at 60% 0%, var(--s2), transparent);
-}
-.proxy-scene .sun-container-reflection .sun {
-  background: linear-gradient(white, rgba(255, 255, 255, 0));
-  box-shadow: none;
-  filter: blur(5px);
-  top: 0;
-  transform: translate3d(0, 40%, 0);
-  opacity: 0;
-  transition: transform 1.6s ease, opacity 1.6s ease;
-}
-.proxy-scene.running .sun-container-reflection .sun {
-  transform: translate3d(0, -18%, 0);
-  opacity: 0.85;
-}
-
-/* 水面光纹：仅 running（太阳照射）时闪动 */
-.proxy-scene .light {
-  height: 0.5cqmin;
-  width: 20cqmin;
-  background: white;
-  left: 20%;
-  right: 0;
-  margin: auto;
-  top: calc(50% + 1cqmin);
-  opacity: 0;
-  transform: scaleX(0.1) translate3d(0%, 0, 0);
-  border-radius: 0.25cqh;
-  filter: blur(1px);
-}
-.proxy-scene.running .light {
-  animation: proxy-scene-light 20s infinite;
-}
-@keyframes proxy-scene-light {
-  5% {
-    opacity: 1;
-    transform: scaleX(1);
-  }
-  10% {
-    opacity: 0.6;
-    transform: scaleX(1) translate3d(5%, 0, 0);
-  }
-  15% {
-    opacity: 0.6;
-    transform: scaleX(1) translate3d(-5%, 0, 0);
-  }
-  20% {
-    opacity: 0;
-    transform: scaleX(0.1) translate3d(0, 0, 0);
-  }
-}
-.proxy-scene .light-1 {
-  top: calc(50% + 2cqmin);
-  animation-delay: 0.5s;
-}
-.proxy-scene .light-2 {
-  top: calc(50% + 3cqmin);
-  width: 18cqmin;
-  animation-delay: 1s;
-}
-.proxy-scene .light-3 {
-  top: calc(50% + 4cqmin);
-  width: 18cqmin;
-  animation-delay: 1.5s;
-}
-.proxy-scene .light-4 {
-  top: calc(50% + 5cqmin);
-  width: 16cqmin;
-  animation-delay: 2s;
-}
-.proxy-scene .light-5 {
-  top: calc(50% + 8cqmin);
-  width: 14cqmin;
-  animation-delay: 2.5s;
-}
-.proxy-scene .light-6 {
-  top: calc(50% + 9cqmin);
-  width: 10cqmin;
-  animation-delay: 3s;
-}
-.proxy-scene .light-7 {
-  top: calc(50% + 7cqmin);
-  width: 12cqmin;
-  animation-delay: 3.5s;
-}
-
-.proxy-scene .splash {
-  width: 8cqmin;
-  height: 3cqmin;
-  border: 2px solid var(--s1);
-  box-shadow: 0 0 2px var(--s1);
   border-radius: 50%;
-  bottom: 5cqmin;
-  left: 70%;
-  animation: proxy-scene-splash 9s infinite;
-  transform: scale(0);
+  background: radial-gradient(
+    circle at 50% 46%,
+    var(--sun-core),
+    var(--sun) 58%,
+    transparent 72%
+  );
+  box-shadow: 0 0 9cqmin var(--glow);
+  opacity: 0.2;
+  transform: translateY(64%);
+  transition:
+    transform 1.8s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 1.4s ease;
 }
-.proxy-scene .splash-stone {
-  bottom: 15cqh;
-  left: -3cqmin;
-  height: 10cqmin;
-  width: 30cqmin;
+.proxy-scene.running .sun {
+  opacity: 1;
+  transform: translateY(-46%);
 }
-.proxy-scene .splash-4 {
-  left: auto;
-  bottom: 15cqmin;
-  right: -2cqmin;
+
+/* 星点（暗色主题，由组件渲染） */
+.proxy-scene .stars {
+  top: 0;
+  left: 0;
+  width: 1.4px;
+  height: 1.4px;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow:
+    9cqmin 7cqh 0 0 #cfe0ff,
+    21cqmin 13cqh 0 0 #eaf2ff,
+    35cqmin 5cqh 0 0 #b9d0f5,
+    47cqmin 16cqh 0 0 #eaf2ff,
+    59cqmin 9cqh 0 0 #cfe0ff,
+    71cqmin 18cqh 0 0 #dce9ff,
+    84cqmin 6cqh 0 0 #eaf2ff,
+    93cqmin 15cqh 0 0 #b9d0f5,
+    15cqmin 24cqh 0 0 #cfe0ff,
+    40cqmin 27cqh 0 0 #dce9ff,
+    66cqmin 25cqh 0 0 #eaf2ff,
+    88cqmin 30cqh 0 0 #cfe0ff;
+  animation: proxy-scene-twinkle 4.5s ease-in-out infinite;
 }
-@keyframes proxy-scene-splash {
-  50%,
+@keyframes proxy-scene-twinkle {
+  0%,
   100% {
-    transform: scale(1);
-    opacity: 0;
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
   }
 }
-.proxy-scene .delay-1 {
-  animation-delay: 1s;
+
+/* 飘云（亮色主题，由组件渲染）：高空细长云絮缓慢横移 */
+.proxy-scene .cloud {
+  top: 17%;
+  left: 0;
+  width: 34cqmin;
+  height: 2.6cqmin;
+  border-radius: 50%;
+  background: var(--haze);
+  opacity: 0.75;
+  filter: blur(2px);
+  transform: translateX(-46cqmin);
+  animation: proxy-scene-drift 95s linear infinite;
 }
-.proxy-scene .delay-2 {
-  animation-delay: 2s;
+.proxy-scene .cloud-1 {
+  top: 30%;
+  width: 22cqmin;
+  height: 1.8cqmin;
+  opacity: 0.5;
+  animation-duration: 130s;
+  animation-delay: -40s;
 }
-.proxy-scene .delay-3 {
-  animation-delay: 3s;
+@keyframes proxy-scene-drift {
+  to {
+    transform: translateX(150cqmin);
+  }
 }
-.proxy-scene .delay-4 {
-  animation-delay: 4s;
+
+/* 雪山山脊：clip-path 锯齿轮廓 + 顶部雪盖渐变；运行时叠暖色高山辉 */
+.proxy-scene .range {
+  left: -5%;
+  right: -5%;
+  bottom: 0;
+}
+.proxy-scene .range::after {
+  content: "";
+  inset: 0;
+  background: linear-gradient(112deg, var(--glow) 0 36%, transparent 60%);
+  opacity: 0;
+  mix-blend-mode: soft-light;
+  transition: opacity 1.6s ease;
+}
+.proxy-scene.running .range::after {
+  opacity: 0.9;
+}
+
+/* 远山：融入天空的雾色，低对比 */
+.proxy-scene .range-far {
+  height: 50%;
+  clip-path: polygon(
+    0 100%, 0 60%, 12% 44%, 23% 58%, 35% 40%, 48% 56%,
+    61% 42%, 74% 58%, 86% 46%, 100% 60%, 100% 100%
+  );
+  background: linear-gradient(to bottom, var(--haze), var(--snow-shade));
+  opacity: 0.6;
+  filter: blur(0.4px);
+}
+
+/* 主峰：明显雪盖（雪 → 雪影 → 岩面） */
+.proxy-scene .range-mid {
+  height: 64%;
+  clip-path: polygon(
+    0 100%, 0 54%, 10% 30%, 20% 50%, 32% 16%, 44% 46%,
+    56% 24%, 70% 48%, 82% 20%, 92% 44%, 100% 34%, 100% 100%
+  );
+  background: linear-gradient(
+    to bottom,
+    var(--snow) 0 13%,
+    var(--snow-shade) 13% 25%,
+    var(--rock) 52%,
+    var(--rock-deep)
+  );
+}
+
+/* 前景峰：最深、最大，压住画面底部 */
+.proxy-scene .range-near {
+  height: 42%;
+  clip-path: polygon(
+    0 100%, 0 66%, 17% 32%, 31% 62%, 47% 26%, 63% 60%,
+    79% 36%, 93% 64%, 100% 50%, 100% 100%
+  );
+  background: linear-gradient(
+    to bottom,
+    var(--snow) 0 9%,
+    var(--snow-shade) 9% 20%,
+    var(--rock-deep) 46%,
+    var(--rock-deep)
+  );
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .proxy-scene .cloud,
-  .proxy-scene .reed,
-  .proxy-scene .reed-1,
-  .proxy-scene .splash,
-  .proxy-scene.running .light {
+  .proxy-scene .stars,
+  .proxy-scene .cloud {
     animation: none;
   }
 }

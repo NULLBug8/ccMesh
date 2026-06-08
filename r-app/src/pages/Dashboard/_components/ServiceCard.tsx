@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useTheme } from "next-themes";
 import { toast } from "sonner";
 
 import { StatusDot, TabularText } from "@/components/ui";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 import { healthApi } from "@/services/modules/health";
 import { proxyApi } from "@/services/modules/proxy";
 import { statsApi } from "@/services/modules/stats";
@@ -16,12 +18,14 @@ import { ProxyScene } from "./ProxyScene";
 /**
  * 仪表盘首卡（左 2/3 / 右 1/3 双卡片）：
  * 左卡=启用端点列表（当前工作端点蓝色高亮）；
- * 右卡=本地代理信息 + 开关 + 端口跳设置，运行时叠加海水涨潮动效。
+ * 右卡=本地代理信息 + 开关 + 端口跳设置，叠加雪山日落场景（开启太阳升起、关闭落下）。
  */
 export function ServiceCard() {
   const status = useProxyStore((s) => s.status);
   const setStatus = useProxyStore((s) => s.setStatus);
   const setActiveView = useLayoutStore((s) => s.setActiveView);
+  const { resolvedTheme } = useTheme();
+  const dark = resolvedTheme === "dark";
   // 最近一条请求明细对应的端点（与实时监控同源，第一时间反映轮换/故障转移）。
   const [liveEndpoint, setLiveEndpoint] = useState<string | null>(null);
   const { data: health } = useQuery({
@@ -105,28 +109,45 @@ export function ServiceCard() {
         </CardContent>
       </Card>
 
-      {/* 右 1/3：本地代理信息 + 开关 + 端口跳设置 + 日出/日落场景 */}
+      {/* 右 1/3：本地代理信息 + 开关 + 端口跳设置 + 雪山日落场景 */}
       <Card className="relative overflow-hidden md:col-span-1">
-        <ProxyScene running={running} />
-        {/* 文字可读性遮罩：顶/底加深，保留中部场景色彩 */}
+        <ProxyScene running={running} dark={dark} />
+        {/* 文字可读性遮罩：亮色用白雾托底、暗色用深色压底 */}
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-0 z-[5] bg-gradient-to-t from-black/40 via-black/10 to-black/25"
+          className={cn(
+            "pointer-events-none absolute inset-0 z-[5]",
+            dark
+              ? "bg-gradient-to-t from-black/45 via-black/5 to-black/15"
+              : "bg-gradient-to-t from-white/60 via-white/5 to-white/40",
+          )}
         />
-        <CardContent className="relative z-10 flex h-full flex-col justify-between gap-3 px-5 py-4 text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.5)]">
+        <CardContent
+          className={cn(
+            "relative z-10 flex h-full flex-col justify-between gap-3 px-5 py-4",
+            dark
+              ? "text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.55)]"
+              : "text-slate-800 [text-shadow:0_1px_2px_rgba(255,255,255,0.7)]",
+          )}
+        >
           <div className="flex flex-col gap-1.5">
             <span className="text-sm font-medium">本地代理</span>
             <button
               type="button"
               onClick={() => setActiveView("settings")}
-              className="self-start text-xs text-white/85 underline-offset-2 transition-colors hover:text-white hover:underline"
+              className={cn(
+                "self-start text-xs underline-offset-2 transition-colors hover:underline",
+                dark
+                  ? "text-white/85 hover:text-white"
+                  : "text-slate-600 hover:text-slate-900",
+              )}
               title="前往设置修改端口"
             >
               端口 <TabularText>{status?.port ?? "—"}</TabularText>
             </button>
           </div>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-xs text-white/85">
+            <span className={cn("text-xs", dark ? "text-white/85" : "text-slate-600")}>
               {running ? "运行中" : "已停止"}
             </span>
             <Switch
