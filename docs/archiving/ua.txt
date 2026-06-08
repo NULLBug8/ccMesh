@@ -1,0 +1,7 @@
+OpenAI/gpt 端点（Codex CLI）：User-Agent: codex_cli_rs/<version> (<OS>; <arch>) + originator: codex_cli_rs 头。
+
+Claude Code CLI 的 User-Agent
+WebFetch 时发送的 UA
+claude-code/2.1.131 (cli)
+格式规律是 claude-code/<版本号> (cli)，版本号随每次 CLI 发布更新，因此中转服务一般用 claude-code/ 前缀来做匹配，而不锁定具体版本号。
+按 146 版本先固定

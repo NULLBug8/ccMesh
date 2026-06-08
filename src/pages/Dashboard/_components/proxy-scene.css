@@ -1,0 +1,224 @@
+/*
+ * 本地代理卡片背景：雪山 + 日落。
+ * 作用域化到 .proxy-scene；尺寸用容器查询单位 cqmin/cqh 适配卡片。
+ * 代理开启(.running) → 太阳自山脊后升起、雪峰染上暖色高山辉；关闭 → 太阳落回山后。
+ * 主题：亮色为近白天空的白昼雪山，暗色为暮夜雪山（色板见 .dark 覆盖；
+ * 星点/飘云这类元素由组件按主题切换渲染）。
+ */
+
+.proxy-scene {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  container-type: size;
+  pointer-events: none;
+  z-index: 0;
+
+  /* 亮色：白昼雪山，上冷下暖（日落） */
+  --sky-top: #f6f9fe; /* 近白天空 */
+  --sky-mid: #fdeede; /* 暖白过渡 */
+  --sky-low: #ffd9b0; /* 地平线日落暖 */
+  --sun-core: #fff1cf;
+  --sun: #ffb24d;
+  --glow: #ffc79a;
+  --snow: #ffffff;
+  --snow-shade: #d8e4f3; /* 雪面冷影 */
+  --rock: #aebfd6;
+  --rock-deep: #8ea2c2;
+  --haze: #f6f9fe; /* 远山融入天空的雾色 */
+
+  background:
+    radial-gradient(135% 78% at 60% 96%, var(--sky-low), transparent 58%),
+    linear-gradient(to bottom, var(--sky-top), var(--sky-mid) 60%, var(--sky-low));
+}
+
+/* 暗色：暮夜雪山 */
+.dark .proxy-scene {
+  --sky-top: #0a1330;
+  --sky-mid: #1a2350;
+  --sky-low: #3b2a55;
+  --sun-core: #ffd0a0;
+  --sun: #ff7a3d;
+  --glow: #ff8a55;
+  --snow: #e9f0ff;
+  --snow-shade: #92a4c8;
+  --rock: #3c496b;
+  --rock-deep: #283251;
+  --haze: #131d3e;
+}
+
+.proxy-scene *,
+.proxy-scene *:before,
+.proxy-scene *:after {
+  position: absolute;
+}
+
+/* 地平线日落辉光（在山体之后） */
+.proxy-scene .glow {
+  inset: 0;
+  background: radial-gradient(
+    42cqmin 30cqmin at 60% 80%,
+    var(--glow),
+    transparent 70%
+  );
+  opacity: 0.4;
+  transition: opacity 1.6s ease;
+}
+.proxy-scene.running .glow {
+  opacity: 0.92;
+}
+
+/* 日落太阳：停止时落于山后，running 时升起（transition 驱动升/落，在山体之后） */
+.proxy-scene .sun {
+  width: 24cqmin;
+  height: 24cqmin;
+  left: 56%;
+  top: 50%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 50% 46%,
+    var(--sun-core),
+    var(--sun) 58%,
+    transparent 72%
+  );
+  box-shadow: 0 0 9cqmin var(--glow);
+  opacity: 0.2;
+  transform: translateY(64%);
+  transition:
+    transform 1.8s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 1.4s ease;
+}
+.proxy-scene.running .sun {
+  opacity: 1;
+  transform: translateY(-46%);
+}
+
+/* 星点（暗色主题，由组件渲染） */
+.proxy-scene .stars {
+  top: 0;
+  left: 0;
+  width: 1.4px;
+  height: 1.4px;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow:
+    9cqmin 7cqh 0 0 #cfe0ff,
+    21cqmin 13cqh 0 0 #eaf2ff,
+    35cqmin 5cqh 0 0 #b9d0f5,
+    47cqmin 16cqh 0 0 #eaf2ff,
+    59cqmin 9cqh 0 0 #cfe0ff,
+    71cqmin 18cqh 0 0 #dce9ff,
+    84cqmin 6cqh 0 0 #eaf2ff,
+    93cqmin 15cqh 0 0 #b9d0f5,
+    15cqmin 24cqh 0 0 #cfe0ff,
+    40cqmin 27cqh 0 0 #dce9ff,
+    66cqmin 25cqh 0 0 #eaf2ff,
+    88cqmin 30cqh 0 0 #cfe0ff;
+  animation: proxy-scene-twinkle 4.5s ease-in-out infinite;
+}
+@keyframes proxy-scene-twinkle {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* 飘云（亮色主题，由组件渲染）：高空细长云絮缓慢横移 */
+.proxy-scene .cloud {
+  top: 17%;
+  left: 0;
+  width: 34cqmin;
+  height: 2.6cqmin;
+  border-radius: 50%;
+  background: var(--haze);
+  opacity: 0.75;
+  filter: blur(2px);
+  transform: translateX(-46cqmin);
+  animation: proxy-scene-drift 95s linear infinite;
+}
+.proxy-scene .cloud-1 {
+  top: 30%;
+  width: 22cqmin;
+  height: 1.8cqmin;
+  opacity: 0.5;
+  animation-duration: 130s;
+  animation-delay: -40s;
+}
+@keyframes proxy-scene-drift {
+  to {
+    transform: translateX(150cqmin);
+  }
+}
+
+/* 雪山山脊：clip-path 锯齿轮廓 + 顶部雪盖渐变；运行时叠暖色高山辉 */
+.proxy-scene .range {
+  left: -5%;
+  right: -5%;
+  bottom: 0;
+}
+.proxy-scene .range::after {
+  content: "";
+  inset: 0;
+  background: linear-gradient(112deg, var(--glow) 0 36%, transparent 60%);
+  opacity: 0;
+  mix-blend-mode: soft-light;
+  transition: opacity 1.6s ease;
+}
+.proxy-scene.running .range::after {
+  opacity: 0.9;
+}
+
+/* 远山：融入天空的雾色，低对比 */
+.proxy-scene .range-far {
+  height: 50%;
+  clip-path: polygon(
+    0 100%, 0 60%, 12% 44%, 23% 58%, 35% 40%, 48% 56%,
+    61% 42%, 74% 58%, 86% 46%, 100% 60%, 100% 100%
+  );
+  background: linear-gradient(to bottom, var(--haze), var(--snow-shade));
+  opacity: 0.6;
+  filter: blur(0.4px);
+}
+
+/* 主峰：明显雪盖（雪 → 雪影 → 岩面） */
+.proxy-scene .range-mid {
+  height: 64%;
+  clip-path: polygon(
+    0 100%, 0 54%, 10% 30%, 20% 50%, 32% 16%, 44% 46%,
+    56% 24%, 70% 48%, 82% 20%, 92% 44%, 100% 34%, 100% 100%
+  );
+  background: linear-gradient(
+    to bottom,
+    var(--snow) 0 13%,
+    var(--snow-shade) 13% 25%,
+    var(--rock) 52%,
+    var(--rock-deep)
+  );
+}
+
+/* 前景峰：最深、最大，压住画面底部 */
+.proxy-scene .range-near {
+  height: 42%;
+  clip-path: polygon(
+    0 100%, 0 66%, 17% 32%, 31% 62%, 47% 26%, 63% 60%,
+    79% 36%, 93% 64%, 100% 50%, 100% 100%
+  );
+  background: linear-gradient(
+    to bottom,
+    var(--snow) 0 9%,
+    var(--snow-shade) 9% 20%,
+    var(--rock-deep) 46%,
+    var(--rock-deep)
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .proxy-scene .stars,
+  .proxy-scene .cloud {
+    animation: none;
+  }
+}
