@@ -85,6 +85,8 @@ pub fn get_config(conn: &Connection) -> AppResult<AppConfig> {
         close_window_behavior: parse_str(&m, "closeWindowBehavior", &d.close_window_behavior),
         models_cache_ttl: parse_i64(&m, "modelsCacheTtl", d.models_cache_ttl),
         proxy_url: parse_str(&m, "proxyUrl", &d.proxy_url),
+        proxy_enabled: parse_bool(&m, "proxyEnabled", d.proxy_enabled),
+        proxy_for_update: parse_bool(&m, "proxyForUpdate", d.proxy_for_update),
         openai_ua: parse_str(&m, "openaiUa", &d.openai_ua),
         claude_cli_ua: parse_str(&m, "claudeCliUa", &d.claude_cli_ua),
         update: UpdateSettings {

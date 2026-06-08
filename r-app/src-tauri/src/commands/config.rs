@@ -33,8 +33,9 @@ pub async fn set_config(
             config_repo::set_value(&conn, k, v)?;
         }
         let port_changed = patch.contains_key("port") && patch.get("port") != old_port.as_ref();
-        // 代理地址 / 伪装 UA 变更需重建转发 client → 重启代理使其生效
+        // 代理地址 / 启用代理 / 伪装 UA 变更需重建转发 client → 重启代理使其生效
         let proxy_or_ua_changed = patch.contains_key("proxyUrl")
+            || patch.contains_key("proxyEnabled")
             || patch.contains_key("openaiUa")
             || patch.contains_key("claudeCliUa");
         port_changed || proxy_or_ua_changed

@@ -47,6 +47,10 @@ pub struct AppConfig {
     pub models_cache_ttl: i64,         // 分钟
     /// 全局代理地址（空=直连）；端点 use_proxy 为真时经此代理出网。
     pub proxy_url: String,
+    /// 全局「启用代理」总开关：开启时转发/获取模型经代理（端点未单独开 use_proxy 时按此）。
+    pub proxy_enabled: bool,
+    /// 「代理更新」专用开关：开启时应用更新检查/下载经同一代理地址出网。
+    pub proxy_for_update: bool,
     /// 转发到 OpenAI 端点时覆盖 User-Agent（空=透传客户端）。
     pub openai_ua: String,
     /// 转发到 Claude 端点时覆盖 User-Agent（空=透传客户端）。
@@ -68,6 +72,8 @@ impl Default for AppConfig {
             close_window_behavior: "ask".into(),
             models_cache_ttl: 30,
             proxy_url: String::new(),
+            proxy_enabled: false,
+            proxy_for_update: false,
             openai_ua: String::new(),
             claude_cli_ua: String::new(),
             update: UpdateSettings::default(),

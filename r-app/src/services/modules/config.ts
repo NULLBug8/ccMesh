@@ -26,10 +26,19 @@ export interface AppConfig {
   closeWindowBehavior: string;
   modelsCacheTtl: number;
   proxyUrl: string;
+  proxyEnabled: boolean;
+  proxyForUpdate: boolean;
   openaiUa: string;
   claudeCliUa: string;
   update: UpdateSettings;
   webdav: WebDavConfig;
+}
+
+export interface ProxyTestResult {
+  success: boolean;
+  status: string;
+  latencyMs: number;
+  message: string;
 }
 
 export const configApi = {
@@ -37,4 +46,6 @@ export const configApi = {
   /** 部分更新：键为扁平配置键（如 port / theme / webdav_url / update_autoCheck），值为字符串。 */
   setConfig: (patch: Record<string, string>) =>
     request<AppConfig>("set_config", { patch }),
+  /** 经给定代理地址做一次连通性检测。 */
+  testProxy: (url: string) => request<ProxyTestResult>("test_proxy", { url }),
 };
