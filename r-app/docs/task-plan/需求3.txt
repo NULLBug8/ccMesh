@@ -1,8 +1,0 @@
-智能端点检测轮询，智能切换机制没有
-熔断机制没有 p1 p2
-
-需要分析 旧版E:\myCode\tauri-gateway\r-app\docs\origin\ccNexus
-和其他软件E:\myCode\cc-switch 的熔断机制，端点轮询智能切换
-
-
-看看如何在当前软件实现
