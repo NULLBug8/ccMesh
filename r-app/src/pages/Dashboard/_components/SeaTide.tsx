@@ -14,7 +14,7 @@ export function SeaTide() {
       <motion.div
         className="absolute inset-x-0 bottom-0"
         initial={{ height: "0%" }}
-        animate={{ height: "44%" }}
+        animate={{ height: "26%" }}
         transition={{ duration: 0.8, ease: "easeOut" }}
       >
         {/* 水体 */}
