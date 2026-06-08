@@ -16,6 +16,7 @@ use tokio::task::JoinHandle;
 
 use crate::error::{AppError, AppResult};
 use crate::modules::models_cache::model_info;
+use crate::modules::proxy::circuit_breaker::{BreakerRegistry, CircuitBreakerConfig};
 use crate::modules::proxy::forward::{handle_proxy, ActiveRequests, ProxyState};
 use crate::modules::proxy::rotation::Rotation;
 use crate::modules::stats::aggregator::StatsAggregator;
@@ -122,6 +123,7 @@ pub async fn start_proxy(
         active: ActiveRequests::default(),
         stats,
         current_endpoint: Mutex::new(None),
+        breakers: BreakerRegistry::new(CircuitBreakerConfig::default()),
     });
 
     let app = build_router(state.clone());

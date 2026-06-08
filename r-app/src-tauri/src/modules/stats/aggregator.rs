@@ -12,6 +12,7 @@ use crate::modules::usage::TokenUsage;
 
 const STATS_EVENT: &str = "stats-updated";
 const REQUEST_LOG_EVENT: &str = "request-logged";
+const ENDPOINT_HEALTH_EVENT: &str = "endpoint-health-changed";
 const FLUSH_INTERVAL: Duration = Duration::from_secs(2);
 /// 请求明细保留窗口：90 天。
 const RETENTION_MS: i64 = 90 * 24 * 60 * 60 * 1000;
@@ -85,6 +86,11 @@ impl StatsAggregator {
             }
         });
         agg
+    }
+
+    /// 端点健康/熔断状态变化事件（前端收到后重新拉取 `get_endpoint_health`）。
+    pub fn emit_health_changed(&self) {
+        let _ = self.app_handle.emit(ENDPOINT_HEALTH_EVENT, ());
     }
 
     /// 记录一次请求结果（累加内存 + 缓冲明细 + 立即发事件）。

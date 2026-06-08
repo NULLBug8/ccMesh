@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use axum::body::{Body, Bytes};
 use axum::extract::State;
@@ -13,6 +14,7 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::models::endpoint::Endpoint;
+use crate::modules::proxy::circuit_breaker::{self, BreakerRegistry};
 use crate::modules::proxy::resolver;
 use crate::modules::proxy::rotation::{self, Rotation};
 use crate::modules::stats::aggregator::{RequestRecord, StatsAggregator};
@@ -76,6 +78,8 @@ pub struct ProxyState {
     pub active: ActiveRequests,
     pub stats: Arc<StatsAggregator>,
     pub current_endpoint: Mutex<Option<String>>,
+    /// 每端点熔断器（请求驱动，运行期内存态）。
+    pub breakers: BreakerRegistry,
 }
 
 impl ProxyState {
@@ -253,6 +257,17 @@ pub async fn handle_proxy(
         return json_error(StatusCode::BAD_REQUEST, &msg);
     }
     let use_specific = resolution.use_specific();
+    // 熔断选路：非显式端点时过滤掉未到期的 Open 端点（全 Open 则兜底放行完整列表）。
+    // 显式指定端点绕过熔断（用户意图优先），但结果仍计入熔断。
+    let (enabled, gate): (Vec<Endpoint>, bool) = if use_specific {
+        (enabled, false)
+    } else {
+        let cands = circuit_breaker::select_candidates(&enabled, &st.breakers, Instant::now());
+        // 候选变少 → 剔除了 Open，存在可用子集，需对候选取许可（半开单探测）；
+        // 数量不变 → 无 Open 或全 Open 兜底，均不 gate。
+        let gate = cands.len() < enabled.len();
+        (cands, gate)
+    };
     let n = enabled.len();
     let max = if use_specific {
         3
@@ -273,6 +288,18 @@ pub async fn handle_proxy(
         };
         st.set_current(&ep.name);
         last_endpoint = ep.name.clone();
+
+        // 熔断许可：gate 时对候选取许可（半开同一时刻仅 1 个探测）；拒绝则跳到下一个端点。
+        let used_permit = if gate {
+            let allow = st.breakers.allow_request(&ep.name, Instant::now());
+            if !allow.allowed {
+                st.rotation.advance(n);
+                continue;
+            }
+            allow.used_half_open_permit
+        } else {
+            false
+        };
 
         let format = UpstreamFormat::from_transformer_name(&ep.transformer);
         // 仅「Claude 入站 + OpenAI 端点」需要请求/响应格式转换；其余（含 OpenAI 入站透传、Claude 直通）不转换。
@@ -319,6 +346,7 @@ pub async fn handle_proxy(
         match result {
             // 被手动切换取消 → 切到下一个
             None => {
+                st.breakers.record_neutral(&ep.name, used_permit);
                 last_err = "请求被取消".to_string();
                 if !use_specific {
                     st.rotation.advance(n);
@@ -337,6 +365,10 @@ pub async fn handle_proxy(
                     started_ms,
                 };
                 if status == 200 {
+                    // 成功：闭合熔断（半开恢复时回传许可）；转换则通知前端
+                    if st.breakers.record_success(&ep.name, used_permit) {
+                        st.stats.emit_health_changed();
+                    }
                     // 真实 token 由各响应处理函数解析上游 usage 后记录
                     let stats = st.stats.clone();
                     return match (needs_transform, client_wants_stream) {
@@ -345,6 +377,22 @@ pub async fn handle_proxy(
                         (false, true) => relay_stream_response(resp, stats, meta, format),
                         (false, false) => relay_buffered_response(resp, stats, meta, format).await,
                     };
+                }
+                // 非 200：按状态码归类上报熔断（客户端错误中性、其余计入失败）
+                match rotation::categorize_status(status) {
+                    rotation::Outcome::NonRetryable => {
+                        st.breakers.record_neutral(&ep.name, used_permit)
+                    }
+                    rotation::Outcome::Retryable => {
+                        if st.breakers.record_failure(
+                            &ep.name,
+                            used_permit,
+                            Instant::now(),
+                            &format!("HTTP {status}"),
+                        ) {
+                            st.stats.emit_health_changed();
+                        }
+                    }
                 }
                 if !rotation::should_retry_status(status) {
                     // 最终非重试状态（400/401）原样回传（错误无 usage）
@@ -364,6 +412,10 @@ pub async fn handle_proxy(
             }
             Some(Err(e)) => {
                 let msg = e.to_string();
+                // 网络错误计入熔断（Retryable）；转换则通知前端
+                if st.breakers.record_failure(&ep.name, used_permit, Instant::now(), &msg) {
+                    st.stats.emit_health_changed();
+                }
                 last_err = msg.clone();
                 if rotation::is_transient_network_error(&msg) {
                     // 瞬时错误：延迟后重试同一端点
