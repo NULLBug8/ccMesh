@@ -1,7 +1,7 @@
 ---
 id: 2027-cache-control-passthrough
 title: Claude→OpenAI 转换保留 cache_control（显式缓存）
-status: in_progress
+status: done
 priority: P1
 layer: transform
 deps: 
@@ -10,7 +10,7 @@ owner: claude
 branch: 
 base_branch: main
 created: 2026-06-10
-completed: 
+completed: 2026-06-10
 parent: 
 children: 
 note: 
