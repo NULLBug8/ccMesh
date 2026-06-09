@@ -1,0 +1,4 @@
+{"file":"docs/task-plan/tasks/2027-cache-control-passthrough/prd.md","reason":"决策真相源：保留 cache_control（system 消息级/消息 part 级/tools 级）、合并继承规则、content 形态"}
+{"file":"docs/task-plan/tasks/2027-cache-control-passthrough/feature.md","reason":"落地：文件落点、任务拆解 2027.x、数据契约、测试点、提交策略"}
+{"file":"docs/task-plan/tasks/2027-cache-control-passthrough/research/cache-control-handling.md","reason":"cc-switch cache_control 处理 file:line 与我方缺口、设计依据"}
+{"file":"E:/myCode/cc-switch/src-tauri/src/proxy/providers/transform.rs","reason":"移植参考：anthropic_to_openai system(:144-158)/合并(:283-344)/消息文本(:380-387,:458-473)/tools(:218-220) 的 cache_control 处理"}
