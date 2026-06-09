@@ -1,0 +1,4 @@
+{"file":"docs/task-plan/tasks/2027-stream-usage-cache-read/prd.md","reason":"决策：最终 message_delta 回传完整 usage，message_start 维持 0"}
+{"file":"docs/task-plan/tasks/2027-stream-usage-cache-read/feature.md","reason":"落点 streaming.rs::finish、任务拆解、测试点、提交策略"}
+{"file":"docs/task-plan/tasks/2027-stream-usage-cache-read/research/streaming-usage.md","reason":"根因（message_start/finish usage 缺口）与 cc-switch streaming.rs file:line 参考"}
+{"file":"E:/myCode/cc-switch/src-tauri/src/proxy/providers/streaming.rs","reason":"参考：build_anthropic_usage_json(:102-113) 与最终 message_delta 携带完整 usage（测试 :993）"}
