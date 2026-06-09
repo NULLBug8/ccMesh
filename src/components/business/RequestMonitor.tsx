@@ -233,11 +233,13 @@ function RequestRow({ log }: { log: RequestLog }) {
         </span>
       </td>
       <td className="px-3 py-2 text-right text-xs text-ink-secondary">
-        <TabularText>{log.durationMs != null ? formatDuration(log.durationMs) : "—"}</TabularText>
+        <TabularText>
+          {!log.isError && log.durationMs != null ? formatDuration(log.durationMs) : "—"}
+        </TabularText>
       </td>
       <td className="px-3 py-2 text-right text-xs text-ink-secondary">
         <TabularText>
-          {log.firstByteMs != null ? formatDuration(log.firstByteMs) : "—"}
+          {!log.isError && log.firstByteMs != null ? formatDuration(log.firstByteMs) : "—"}
         </TabularText>
       </td>
       <td className="px-3 py-2 text-right">
@@ -288,13 +290,13 @@ function TokenDetail({ log, total }: { log: RequestLog; total: number }) {
           <TabularText>{formatTokenK(total)}</TabularText>
         </span>
       </div>
-      {log.firstByteMs != null && (
+      {!log.isError && log.firstByteMs != null && (
         <div className="flex items-center justify-between gap-4 text-ink-secondary">
           <span>首字</span>
           <TabularText>{formatDuration(log.firstByteMs)}</TabularText>
         </div>
       )}
-      {log.durationMs != null && (
+      {!log.isError && log.durationMs != null && (
         <div className="flex items-center justify-between gap-4 text-ink-secondary">
           <span>耗时</span>
           <TabularText>{formatDuration(log.durationMs)}</TabularText>

@@ -51,6 +51,26 @@ describe("RequestLogTable", () => {
     expect(screen.getAllByText("/v1/chat/completions")).toHaveLength(2);
   });
 
+  it("成功行展示用时/首字", () => {
+    render(<RequestLogTable items={[log]} />);
+    expect(screen.getByText("0.12s")).toBeInTheDocument(); // 用时 120ms
+    expect(screen.getByText("0.08s")).toBeInTheDocument(); // 首字 80ms
+  });
+
+  it("失败行隐藏用时/首字（显示 —）", () => {
+    const failed: RequestLog = {
+      ...log,
+      id: 3,
+      statusCode: 500,
+      isError: true,
+    };
+    render(<RequestLogTable items={[failed]} />);
+    // 计时单元格应为占位符，且不出现秒数值
+    expect(screen.queryByText("0.12s")).not.toBeInTheDocument();
+    expect(screen.queryByText("0.08s")).not.toBeInTheDocument();
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2);
+  });
+
   it("空数据显示占位", () => {
     render(<RequestLogTable items={[]} />);
     expect(screen.getByText("暂无请求记录")).toBeInTheDocument();
