@@ -75,7 +75,7 @@ Public:  C:\Users\Administrator\.tauri\ccmesh_updater.key.pub
 "plugins": {
   "updater": {
     "endpoints": [
-      "https://github.com/OWNER/REPO/releases/latest/download/latest.json"
+      "https://github.com/VkRainB/ccMesh/releases/latest/download/latest.json"
     ],
     "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6..."
   }
@@ -87,7 +87,7 @@ Public:  C:\Users\Administrator\.tauri\ccmesh_updater.key.pub
 | `endpoints` | 更新源地址列表；支持 `{{target}}`/`{{arch}}`/`{{current_version}}` 占位 |
 | `pubkey` | 公钥内容（`*.key.pub` 文件内容，直接粘贴） |
 
-> **注意：** 当前 `endpoints` 为占位 `OWNER/REPO`，**上线前必须替换为真实 GitHub 仓库路径**。`/releases/latest/download/` 仅对**正式发布**（非草稿、非预发布）的 Release 生效。
+> **注意：** `endpoints` 已指向真实仓库 `VkRainB/ccMesh`。`/releases/latest/download/` 仅对**正式发布**（非草稿、非预发布）的 Release 生效。
 
 ---
 
@@ -226,7 +226,7 @@ GitHub 仓库 → **Settings → Secrets and variables → Actions → New repos
 
 **上线前检查清单：**
 
-- [ ] `endpoints` 已把 `OWNER/REPO` 换成真实仓库
+- [x] `endpoints` 已把 `OWNER/REPO` 换成真实仓库（`VkRainB/ccMesh`）
 - [ ] GitHub Secret `TAURI_SIGNING_PRIVATE_KEY` 已配置
 - [ ] 私钥已备份（丢失不可恢复）
 - [ ] Release 已正式 Publish（非草稿）
