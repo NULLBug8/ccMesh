@@ -231,7 +231,7 @@ export function Settings() {
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-medium text-ink-secondary">系统 / 高级</h2>
         <div className="flex flex-col divide-y divide-edge-subtle rounded-lg border border-edge">
-          <Row label="OpenAI 端点 UA（伪装，空=透传客户端）">
+          <Row label="OpenAI 端点 UA（例 codex_cli_rs/0.77.0 (Windows 10.0.26100; x86_64)）">
             <Input
               className="w-64"
               placeholder="留空透传客户端 UA"
@@ -239,7 +239,7 @@ export function Settings() {
               onBlur={(e) => save({ openaiUa: e.target.value })}
             />
           </Row>
-          <Row label="Claude 端点 UA（伪装，空=透传客户端）">
+          <Row label="Claude 端点 UA（例 claude-cli/2.1.2 (external, cli)）">
             <Input
               className="w-64"
               placeholder="留空透传客户端 UA"
