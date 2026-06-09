@@ -84,7 +84,7 @@ my-tauri-app/
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    r_app_lib::run()
+    ccmesh_lib::run()
 }
 ```
 
@@ -488,7 +488,7 @@ await userApi.updateUser(1, '李四');
 
 ```toml
 [package]
-name = "r-app"
+name = "ccmesh"
 version = "0.1.0"
 edition = "2021"
 

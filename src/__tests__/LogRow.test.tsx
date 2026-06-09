@@ -7,7 +7,7 @@ import type { LogLine } from "@/services/modules/logs";
 const line: LogLine = {
   time: "10:00:00.123",
   level: "INFO",
-  target: "r_app_lib::modules::storage::migration",
+  target: "ccmesh_lib::modules::storage::migration",
   message: "已应用数据库迁移",
   fields: [{ key: "version", value: "4" }],
 };

@@ -43,7 +43,7 @@ fn main() {
 ```json
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "r-app",
+  "productName": "ccMesh",
   "version": "0.1.0",
   "identifier": "com.ex.xyz",
   "build": { ... },
@@ -101,7 +101,7 @@ fn main() {
 ```json
 "windows": [
   {
-    "title": "r-app",
+    "title": "ccMesh",
     "width": 800,
     "height": 600
   }
