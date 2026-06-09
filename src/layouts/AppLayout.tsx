@@ -1,24 +1,34 @@
-import { useEffect, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, type ComponentType } from "react";
 
 import { cn } from "@/lib/utils";
 import { useLayoutStore, type ViewId } from "@/stores";
-import { Dashboard } from "@/pages/Dashboard";
-import { Endpoints } from "@/pages/Endpoints";
-import { Statistics } from "@/pages/Statistics";
-import { Sync } from "@/pages/Sync";
-import { Logs } from "@/pages/Logs";
-import { Settings } from "@/pages/Settings";
 import { TopNav } from "./TopNav";
 import { SideNav } from "./SideNav";
 import { TitleBar } from "./TitleBar";
 
-const VIEW_MAP: Record<ViewId, ReactNode> = {
-  dashboard: <Dashboard />,
-  endpoints: <Endpoints />,
-  statistics: <Statistics />,
-  sync: <Sync />,
-  logs: <Logs />,
-  settings: <Settings />,
+// 6 个页面懒加载，各自拆为独立 chunk，仅在切换到对应视图时加载
+const Dashboard = lazy(() =>
+  import("@/pages/Dashboard").then((m) => ({ default: m.Dashboard })),
+);
+const Endpoints = lazy(() =>
+  import("@/pages/Endpoints").then((m) => ({ default: m.Endpoints })),
+);
+const Statistics = lazy(() =>
+  import("@/pages/Statistics").then((m) => ({ default: m.Statistics })),
+);
+const Sync = lazy(() => import("@/pages/Sync").then((m) => ({ default: m.Sync })));
+const Logs = lazy(() => import("@/pages/Logs").then((m) => ({ default: m.Logs })));
+const Settings = lazy(() =>
+  import("@/pages/Settings").then((m) => ({ default: m.Settings })),
+);
+
+const PAGES: Record<ViewId, ComponentType> = {
+  dashboard: Dashboard,
+  endpoints: Endpoints,
+  statistics: Statistics,
+  sync: Sync,
+  logs: Logs,
+  settings: Settings,
 };
 
 export function AppLayout() {
@@ -37,6 +47,8 @@ export function AppLayout() {
     return () => mql.removeEventListener("change", handler);
   }, []);
 
+  const ActivePage = PAGES[activeView];
+
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
       <TitleBar />
@@ -47,7 +59,11 @@ export function AppLayout() {
         )}
       >
         {navMode === "horizontal" ? <TopNav /> : <SideNav />}
-        <main className="flex-1 overflow-y-auto p-8">{VIEW_MAP[activeView]}</main>
+        <main className="flex-1 overflow-y-auto p-8">
+          <Suspense fallback={null}>
+            <ActivePage />
+          </Suspense>
+        </main>
       </div>
     </div>
   );

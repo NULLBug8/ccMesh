@@ -1,7 +1,5 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { json } from "@codemirror/lang-json";
-import CodeMirror from "@uiw/react-codemirror";
 import { PlusIcon, RefreshCwIcon, XIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
@@ -27,6 +25,8 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { endpointApi, type Endpoint } from "@/services/modules/endpoint";
+
+const JsonEditor = lazy(() => import("./JsonEditor"));
 
 interface FormState {
   name: string;
@@ -261,13 +261,19 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
           </TabsContent>
 
           <TabsContent value="json">
-            <CodeMirror
-              value={jsonText}
-              height="240px"
-              theme={resolvedTheme === "dark" ? "dark" : "light"}
-              extensions={[json()]}
-              onChange={onJsonChange}
-            />
+            <Suspense
+              fallback={
+                <div className="flex h-[240px] items-center justify-center text-xs text-ink-mute">
+                  加载编辑器…
+                </div>
+              }
+            >
+              <JsonEditor
+                value={jsonText}
+                theme={resolvedTheme === "dark" ? "dark" : "light"}
+                onChange={onJsonChange}
+              />
+            </Suspense>
             {jsonErr ? <p className="mt-1 text-xs text-destructive">{jsonErr}</p> : null}
           </TabsContent>
         </Tabs>

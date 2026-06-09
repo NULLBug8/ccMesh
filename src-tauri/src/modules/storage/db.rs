@@ -18,7 +18,11 @@ pub fn create_pool(db_file: &Path) -> AppResult<DbPool> {
              PRAGMA synchronous=NORMAL;",
         )
     });
+    // 首启只预建 1 条连接（默认 min_idle=max_size 会同步打开多条并各跑一次 WAL PRAGMA），
+    // 降低窗口内容就绪前的同步建连成本；上限保持充足以应对并发。
     Pool::builder()
+        .max_size(8)
+        .min_idle(Some(1))
         .build(manager)
         .map_err(|e| AppError::Db(format!("创建连接池失败: {e}")))
 }
