@@ -21,6 +21,7 @@ use crate::modules::proxy::forward::{handle_proxy, ActiveRequests, ProxyState};
 use crate::modules::proxy::rotation::Rotation;
 use crate::modules::stats::aggregator::StatsAggregator;
 use crate::modules::storage::{config_repo, db::DbPool, endpoint_repo};
+use crate::modules::transform::thinking_rectifier::RectifierConfig;
 
 /// 代理运行句柄，存于 `AppState.proxy`。持有关停信号、任务句柄与共享状态。
 pub struct ProxyHandle {
@@ -125,6 +126,7 @@ pub async fn start_proxy(
         current_endpoint: Mutex::new(None),
         proxy_enabled: cfg.proxy_enabled,
         breakers: BreakerRegistry::new(CircuitBreakerConfig::default()),
+        rectifier_config: RectifierConfig::default(),
     });
 
     let app = build_router(state.clone());
@@ -186,8 +188,7 @@ async fn models_route(State(st): State<Arc<ProxyState>>, headers: HeaderMap) -> 
         Err(_) => Vec::new(),
     };
 
-    let anthropic =
-        headers.contains_key("x-api-key") || headers.contains_key("anthropic-version");
+    let anthropic = headers.contains_key("x-api-key") || headers.contains_key("anthropic-version");
     if anthropic {
         // Anthropic 格式：data[].{id,type,display_name,created_at} + first_id/last_id/has_more
         let data: Vec<serde_json::Value> = pairs
@@ -213,8 +214,10 @@ async fn models_route(State(st): State<Arc<ProxyState>>, headers: HeaderMap) -> 
         .into_response()
     } else {
         // OpenAI 格式：object:list + data[].{id,object,created,owned_by}
-        let data: Vec<serde_json::Value> =
-            pairs.iter().map(|(id, name)| model_info(id, name)).collect();
+        let data: Vec<serde_json::Value> = pairs
+            .iter()
+            .map(|(id, name)| model_info(id, name))
+            .collect();
         Json(json!({ "object": "list", "data": data })).into_response()
     }
 }

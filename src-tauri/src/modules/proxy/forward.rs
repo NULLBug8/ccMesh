@@ -19,10 +19,13 @@ use crate::modules::proxy::resolver;
 use crate::modules::proxy::rotation::{self, Rotation};
 use crate::modules::stats::aggregator::{RequestRecord, StatsAggregator};
 use crate::modules::storage::{db::DbPool, endpoint_repo};
-use crate::modules::usage;
 use crate::modules::transform::claude_openai::openai_response_to_claude;
 use crate::modules::transform::streaming::StreamConverter;
+use crate::modules::transform::thinking_rectifier::{
+    rectify_anthropic_request, should_rectify_thinking_signature, RectifierConfig,
+};
 use crate::modules::transform::transformer::{get_transformer, UpstreamFormat};
+use crate::modules::usage;
 
 /// 每端点在途请求计数 + 取消令牌（手动切换时中止在途请求）。
 #[derive(Default)]
@@ -82,6 +85,8 @@ pub struct ProxyState {
     pub proxy_enabled: bool,
     /// 每端点熔断器（请求驱动，运行期内存态）。
     pub breakers: BreakerRegistry,
+    /// thinking 签名整流器配置（反应式：上游签名错误时清洗 thinking/signature 后透明重试）。
+    pub rectifier_config: RectifierConfig,
 }
 
 impl ProxyState {
@@ -182,7 +187,7 @@ pub async fn handle_proxy(
     let started_ms = chrono::Utc::now().timestamp_millis();
 
     // 解析请求体（model / stream / 供转换复用）
-    let body_json: Option<Value> = serde_json::from_slice(&body).ok();
+    let mut body_json: Option<Value> = serde_json::from_slice(&body).ok();
     let model: Option<String> = body_json
         .as_ref()
         .and_then(|v| v.get("model").and_then(|m| m.as_str()).map(String::from));
@@ -280,6 +285,8 @@ pub async fn handle_proxy(
     let mut attempts_on_current = 0u32;
     let mut last_err = String::new();
     let mut last_endpoint = String::new();
+    // thinking 签名整流一次性标志：命中后清洗重试，仅一次，防死循环。
+    let mut sig_rectified = false;
 
     for _ in 0..max {
         let ep: Endpoint = if let Some(ref e) = resolution.endpoint {
@@ -325,8 +332,18 @@ pub async fn handle_proxy(
                     if let Some(o) = v.as_object_mut() {
                         o.insert("model".to_string(), Value::String(ep.model.clone()));
                     }
-                    serde_json::to_vec(&v).map(Bytes::from).unwrap_or_else(|_| body.clone())
+                    serde_json::to_vec(&v)
+                        .map(Bytes::from)
+                        .unwrap_or_else(|_| body.clone())
                 }
+                None => body.clone(),
+            }
+        } else if sig_rectified {
+            // 已签名整流：从整流后的 body_json 重新序列化（直通空 model 分支否则会回退用原始未整流字节）
+            match &body_json {
+                Some(cj) => serde_json::to_vec(cj)
+                    .map(Bytes::from)
+                    .unwrap_or_else(|_| body.clone()),
                 None => body.clone(),
             }
         } else {
@@ -397,6 +414,31 @@ pub async fn handle_proxy(
                     }
                 }
                 if !rotation::should_retry_status(status) {
+                    // 整流器启用且本轮未整流：读错误体尝试 thinking 签名整流（透明重试）。
+                    if st.rectifier_config.enabled && !sig_rectified {
+                        let resp_headers = copy_response_headers(&resp);
+                        let err_bytes = resp.bytes().await.unwrap_or_default();
+                        let matched = {
+                            let err_text = String::from_utf8_lossy(&err_bytes);
+                            should_rectify_thinking_signature(Some(&err_text), &st.rectifier_config)
+                        };
+                        if matched {
+                            if let Some(cj) = body_json.as_mut() {
+                                if rectify_anthropic_request(cj).applied {
+                                    // 清洗成功：不计失败、不前进轮换，下一轮用整流后的 body_json 重试同端点
+                                    sig_rectified = true;
+                                    continue;
+                                }
+                            }
+                        }
+                        // 未命中 / 无可整流内容：用缓冲错误体原样回传
+                        st.stats.record(meta.into_record(
+                            Some(status as i64),
+                            status >= 400,
+                            usage::TokenUsage::default(),
+                        ));
+                        return relay_buffered_error(status, resp_headers, err_bytes);
+                    }
                     // 最终非重试状态（400/401）原样回传（错误无 usage）
                     st.stats.record(meta.into_record(
                         Some(status as i64),
@@ -415,7 +457,10 @@ pub async fn handle_proxy(
             Some(Err(e)) => {
                 let msg = e.to_string();
                 // 网络错误计入熔断（Retryable）；转换则通知前端
-                if st.breakers.record_failure(&ep.name, used_permit, Instant::now(), &msg) {
+                if st
+                    .breakers
+                    .record_failure(&ep.name, used_permit, Instant::now(), &msg)
+                {
                     st.stats.emit_health_changed();
                 }
                 last_err = msg.clone();
@@ -565,6 +610,15 @@ fn relay_passthrough(resp: reqwest::Response) -> Response {
     response
 }
 
+/// 由已缓冲的错误字节重建响应（错误体被读取用于整流匹配后，无法再流式直通）。
+fn relay_buffered_error(status_code: u16, headers: HeaderMap, bytes: Bytes) -> Response {
+    let status = StatusCode::from_u16(status_code).unwrap_or(StatusCode::BAD_GATEWAY);
+    let mut response = Response::new(Body::from(bytes));
+    *response.status_mut() = status;
+    *response.headers_mut() = headers;
+    response
+}
+
 /// 非流式直通：缓冲响应体 → 按上游格式解析真实 usage 记录统计 → 原样回传。
 async fn relay_buffered_response(
     resp: reqwest::Response,
@@ -632,7 +686,11 @@ async fn transform_buffered_response(
             Ok(openai) => {
                 let tu = usage::from_response(&openai, UpstreamFormat::OpenAiChat);
                 stats.record(meta.into_record(Some(200), false, tu));
-                (StatusCode::OK, axum::Json(openai_response_to_claude(&openai))).into_response()
+                (
+                    StatusCode::OK,
+                    axum::Json(openai_response_to_claude(&openai)),
+                )
+                    .into_response()
             }
             Err(_) => json_error(StatusCode::BAD_GATEWAY, "上游响应解析失败"),
         },
@@ -682,8 +740,13 @@ fn stream_transform_response(
         for ev in converter.finish() {
             let _ = tx.send(Ok(Bytes::from(ev))).await;
         }
-        let (i, o) = converter.usage();
-        let tu = usage::TokenUsage { input: i, output: o, cache_creation: 0, cache_read: 0 };
+        let (input, output, cache_creation, cache_read) = converter.usage();
+        let tu = usage::TokenUsage {
+            input,
+            output,
+            cache_creation,
+            cache_read,
+        };
         stats.record(meta.into_record(Some(200), false, tu));
     });
 
