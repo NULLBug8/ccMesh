@@ -1,0 +1,122 @@
+E:\myCode\cc-switch。好，现在我把 cc-switch（`farion1231/cc-switch`，目前最活跃的版本，47.8k stars）的架构搞清楚了。它的工具兼容性修复不是靠一个简单的字段映射，而是由多个分层机制组合完成的。
+
+---
+
+## cc-switch 的工具协议修复架构
+
+### 整体分层
+
+cc-switch 的代理层由三个独立模块组成，工具转换问题分散在这三层里各自处理：
+
+```
+Claude Code (Anthropic 协议)
+        ↓
+  ┌─────────────────────────────────┐
+  │  1. Format Converter            │  ← 协议格式转换
+  │     Anthropic ↔ OpenAI Chat     │
+  ├─────────────────────────────────┤
+  │  2. Rectifier                   │  ← 修复器（核心）
+  │     thinking signature 修复     │
+  │     工具参数清洗                 │
+  ├─────────────────────────────────┤
+  │  3. Request Forwarder           │  ← 转发 + 重试
+  │     failover / circuit breaker  │
+  └─────────────────────────────────┘
+        ↓
+  第三方 OpenAI 兼容后端
+```
+
+---
+
+### 1. Format Converter — 基础协议翻译
+
+这一层负责把 Claude Code 发出的 Anthropic 格式请求转成 OpenAI Chat Completions，以及反向把响应翻译回来。
+
+在格式转换阶段，`Anthropic tool_choice` 会被正确映射到 OpenAI Chat 的嵌套形式，这是之前很多简单代理都遗漏的地方。
+
+关键的工具字段映射：
+
+```
+请求方向
+─────────────────────────────────────────────────────
+tool_choice: {type:"auto"}     →  tool_choice: "auto"
+tool_choice: {type:"tool",     →  tool_choice: {type:"function",
+  name:"Read"}                      function:{name:"Read"}}
+
+工具定义
+tools[].input_schema            →  tools[].function.parameters
+
+响应方向
+─────────────────────────────────────────────────────
+content[].type="tool_use"       →  message.tool_calls[].function
+  .id = "toolu_01xxx"               .id = "call_xxx"
+  .input = {object}                 .arguments = JSON.stringify()
+stop_reason = "tool_use"        →  finish_reason = "tool_calls"
+```
+
+v3.15.0 的一个专项修复是：canonicalize JSON keys in outgoing request bodies，包括 `tool_call arguments` 和 `tool_result content`——这确保了相同内容每次序列化结果一致，对 prefix cache 命中率有直接影响。
+
+---
+
+### 2. Rectifier（修复器）— 这是 cc-switch 的核心创新
+
+Rectifier 是从 v3.10.0 引入的，最初定位是"thinking signature 修复器"，用于解决第三方 API 不兼容 Claude extended thinking 签名的问题。
+
+但随着版本迭代，Rectifier 的职责扩展到了**所有需要在转发前后做修补的场景**，包括：
+
+**工具参数清洗（直接关联你的 `pages: ""` 问题）：**
+
+v3.16.0 的 changelog 中明确提到：canonicalize parseable JSON string payloads in tool conversions，目的是 stable prefix-cache reuse——这个操作同时也会去掉空字段。
+
+Rectifier 的工作模式是**拦截-修复-重试**：
+
+```
+1. 请求发出 → 后端返回错误
+2. Rectifier 判断是否是"可修复错误"
+   - Invalid parameter 类 → 清洗参数重试
+   - thinking signature 不匹配 → 修复签名重试
+   - tool_calls 格式问题 → 重构再发
+3. 修复后重试，对 Claude Code 透明
+```
+
+v3.15.0 专门提取了一个共享的 `handle_rectifier_retry_failure` helper，统一处理所有 rectifier 路径上的重试失败逻辑。
+
+---
+
+### 3. 工具调用历史的跨轮恢复
+
+这是 cc-switch 解决"工具调用在多轮对话中丢失"的方案，也是你之前提到的 ID 映射问题的解法：
+
+cc-switch 维护了一个有界的 Codex Chat history cache，用于在工具调用之前恢复 tool calls——当 proxy 重启、call_id 模糊、或者某轮没有 upstream reasoning 时，tool calls 历史仍然可以被正确还原。
+
+具体机制：
+
+```
+会话内维护一个 Map<call_id, tool_use_id>
+  "call_abc123" ↔ "toolu_01xxxx"
+
+多轮对话时：
+  轮1：tool_use id="toolu_01" → 存入 cache
+  轮2：tool_result tool_use_id="toolu_01" ← 从 cache 查找
+       转换为 OpenAI: tool_call_id="call_xxx"
+
+proxy 重启时：从 session 历史反推 call_id
+```
+
+---
+
+### 4. 对你的 `pages: ""` 问题的直接启示
+
+cc-switch 的做法实际上印证了我上一条回答的分析，并且给出了更完整的策略：
+
+| 问题 | cc-switch 的做法 |
+|------|----------------|
+| 空字符串参数 | Rectifier 层做 JSON canonicalization，过滤空值 |
+| tool_choice 格式错误 | Format Converter 做嵌套形式的精确映射 |
+| 工具调用报错后重试 | Rectifier 拦截错误响应，修复参数后自动重发，对上层透明 |
+| 多轮 ID 不一致 | session 级别 ID 映射 cache，proxy 重启后可恢复 |
+
+所以你如果在自己的代理层做的话，关键是在 Rectifier 位置加一个**错误响应拦截器**——当后端返回 `Invalid pages parameter: ""`  这类参数校验错误时，不要直接把错误透传给 Claude Code，而是清洗掉问题参数、静默重试，整个过程对 Claude Code 不可见。这比在请求前做预防性清洗更健壮，因为你无法预判模型会生成哪些空字段。
+
+
+ 现在请将该功能集成到项目中
