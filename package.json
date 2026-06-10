@@ -1,7 +1,7 @@
 {
   "name": "ccmesh",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,7 +12,8 @@
     "check:rust": "cargo check --manifest-path src-tauri/Cargo.toml --message-format=short",
     "check": "pnpm check:front && pnpm check:rust",
     "tauri": "tauri",
-    "tauri:build": "dotenv -e .env.local -- tauri build"
+    "tauri:build": "dotenv -e .env.local -- tauri build",
+    "version:set": "node scripts/update-version.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.3",
