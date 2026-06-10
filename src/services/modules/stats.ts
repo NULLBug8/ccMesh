@@ -69,6 +69,8 @@ export interface RequestLog {
   durationMs: number | null;
   /** 首字节延迟（毫秒）：流式为首个内容分片到达耗时，缓冲为响应头到达耗时。旧行/无数据为 null。 */
   firstByteMs: number | null;
+  /** 实际(出站)模型：映射/锁定改写后与请求模型不同才有值；透传/旧行为 null。 */
+  actualModel: string | null;
 }
 
 export interface RequestLogPage {

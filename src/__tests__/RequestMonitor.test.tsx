@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { fmtDateTime, fmtTime, RequestLogTable } from "@/components/business/RequestMonitor";
+import { fmtDateTime, fmtTime, RequestLogTable, TokenDetail } from "@/components/business/RequestMonitor";
 import type { RequestLog } from "@/services/modules/stats";
 
 const log: RequestLog = {
@@ -21,6 +21,7 @@ const log: RequestLog = {
   model: "claude-3",
   durationMs: 120,
   firstByteMs: 80,
+  actualModel: null,
 };
 
 describe("RequestLogTable", () => {
@@ -99,5 +100,21 @@ describe("fmtDateTime", () => {
   it("展示 年-月-日 时:分:秒（零填充，24 小时制）", () => {
     const ts = new Date(2026, 5, 7, 9, 5, 3).getTime();
     expect(fmtDateTime(ts)).toBe("2026-06-07 09:05:03");
+  });
+});
+
+describe("TokenDetail 实际模型", () => {
+  it("映射生效时展示实际模型（值为蓝色）", () => {
+    const mapped: RequestLog = { ...log, model: "claude-opus-4-8", actualModel: "gpt-5.5" };
+    render(<TokenDetail log={mapped} total={20} />);
+    expect(screen.getByText("模型：claude-opus-4-8")).toBeInTheDocument();
+    expect(screen.getByText(/实际模型/)).toBeInTheDocument();
+    const val = screen.getByText("gpt-5.5");
+    expect(val.className).toContain("text-info");
+  });
+
+  it("无映射(透传)时不展示实际模型", () => {
+    render(<TokenDetail log={{ ...log, actualModel: null }} total={20} />);
+    expect(screen.queryByText(/实际模型/)).not.toBeInTheDocument();
   });
 });

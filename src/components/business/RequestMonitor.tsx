@@ -262,7 +262,7 @@ function RequestRow({ log }: { log: RequestLog }) {
   );
 }
 
-function TokenDetail({ log, total }: { log: RequestLog; total: number }) {
+export function TokenDetail({ log, total }: { log: RequestLog; total: number }) {
   const rows: [string, number][] = [
     ["输入", log.inputTokens],
     ["输出", log.outputTokens],
@@ -274,6 +274,11 @@ function TokenDetail({ log, total }: { log: RequestLog; total: number }) {
       {log.model && (
         <div className="truncate text-ink-secondary" title={log.model}>
           模型：{log.model}
+        </div>
+      )}
+      {log.actualModel && (
+        <div title={log.actualModel} className="text-ink-secondary">
+          实际模型：<span className=" truncate text-info">{log.actualModel}</span>
         </div>
       )}
       {rows.map(([k, v]) => (
