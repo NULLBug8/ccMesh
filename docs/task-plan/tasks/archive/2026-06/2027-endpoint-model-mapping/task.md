@@ -1,7 +1,7 @@
 ---
 id: 2027-endpoint-model-mapping
 title: 端点模型映射（入站→出站）
-status: in_progress
+status: done
 priority: P2
 layer: 前端+后端
 deps: 
@@ -10,7 +10,7 @@ owner: claude
 branch: 
 base_branch: main
 created: 2026-06-10
-completed: 
+completed: 2026-06-10
 parent: 
 children: 
 note: 
