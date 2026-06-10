@@ -58,17 +58,29 @@ export function Endpoints() {
   };
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-5">
-      <h1 className="text-2xl font-light tracking-tight">端点管理</h1>
-      <FilterBar onCreate={openCreate} />
-      {isLoading ? (
-        <p className="text-sm text-ink-mute">加载中…</p>
-      ) : filtered.length === 0 ? (
-        <p className="text-sm text-ink-mute">暂无端点，点击「新建端点」添加。</p>
-      ) : (
-        <DnDList endpoints={filtered} draggable={dragEnabled} view={view} onEdit={openEdit} />
-      )}
-      <ModelList />
+    <div className="mx-auto flex h-full max-w-4xl flex-col gap-5">
+      {/* 固定头部：标题 + 筛选栏（不随下方区域滚动） */}
+      <div className="flex shrink-0 flex-col gap-5">
+        <h1 className="text-2xl font-light tracking-tight">端点管理</h1>
+        <FilterBar onCreate={openCreate} />
+      </div>
+
+      {/* 上区（端点列表）：占剩余视口高度 60%，超出内部滚动 */}
+      <div className="min-h-0 flex-[3] overflow-y-auto pr-1">
+        {isLoading ? (
+          <p className="text-sm text-ink-mute">加载中…</p>
+        ) : filtered.length === 0 ? (
+          <p className="text-sm text-ink-mute">暂无端点，点击「新建端点」添加。</p>
+        ) : (
+          <DnDList endpoints={filtered} draggable={dragEnabled} view={view} onEdit={openEdit} />
+        )}
+      </div>
+
+      {/* 下区（可用模型）：占剩余视口高度 40%，超出内部滚动 */}
+      <div className="min-h-0 flex-[2] overflow-y-auto pr-1">
+        <ModelList />
+      </div>
+
       <EndpointForm open={formOpen} onOpenChange={setFormOpen} editing={editing} />
     </div>
   );
