@@ -13,12 +13,12 @@ export function ModelList() {
     .filter((g) => g.models.length > 0);
 
   return (
-    <section className="flex flex-col gap-3">
-      <h2 className="text-sm font-medium text-ink-secondary">可用模型（按端点）</h2>
+    <section className="flex h-full flex-col gap-3">
+      <h2 className="shrink-0 text-sm font-medium text-ink-secondary">可用模型（按端点）</h2>
       {groups.length === 0 ? (
         <p className="text-sm text-ink-mute">暂无模型（在端点中配置模型清单或锁定模型）</p>
       ) : (
-        <div className="flex flex-col gap-3">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
           {groups.map((g) => (
             <div key={g.name} className="flex flex-col gap-1.5">
               <span className="text-xs text-ink-mute">

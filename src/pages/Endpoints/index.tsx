@@ -76,8 +76,8 @@ export function Endpoints() {
         )}
       </div>
 
-      {/* 下区（可用模型）：占剩余视口高度 40%，超出内部滚动 */}
-      <div className="min-h-0 flex-[2] overflow-y-auto pr-1">
+      {/* 下区（可用模型）：占剩余视口高度 40%，标题固定、仅模型内容内部滚动 */}
+      <div className="flex min-h-0 flex-[2] flex-col">
         <ModelList />
       </div>
 
