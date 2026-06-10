@@ -1,0 +1,3 @@
+{"file":"docs/task-plan/tasks/2027-endpoint-model-mapping/prd.md","reason":"PRD 决策与验收（含用户已定 2 项 + 提议默认）"}
+{"file":"docs/task-plan/tasks/2027-endpoint-model-mapping/feature.md","reason":"落点、任务拆解、数据契约、提交策略"}
+{"file":"docs/task-plan/tasks/2027-endpoint-model-mapping/research/codebase.md","reason":"现状架构与耦合点（filter_by_model/forward/三处展示）"}
