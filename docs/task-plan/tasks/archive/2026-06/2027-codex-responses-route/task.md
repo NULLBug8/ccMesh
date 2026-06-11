@@ -1,7 +1,7 @@
 ---
 id: 2027-codex-responses-route
 title: codex端点与v1responses路由转发
-status: in_progress
+status: done
 priority: P2
 layer: backend
 deps: 
@@ -10,7 +10,7 @@ owner: claude
 branch: 
 base_branch: main
 created: 2026-06-11
-completed: 
+completed: 2026-06-11
 parent: 
 children: 
 note: 
