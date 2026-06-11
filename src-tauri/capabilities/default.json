@@ -16,6 +16,10 @@
     "core:window:allow-set-focus",
     "updater:default",
     "process:default",
-    "dialog:default"
+    "dialog:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://github.com/VkRainB/ccMesh/*" }]
+    }
   ]
 }
