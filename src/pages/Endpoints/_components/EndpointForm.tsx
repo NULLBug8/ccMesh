@@ -209,6 +209,7 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
                 <SelectContent>
                   <SelectItem value="claude">claude（直通）</SelectItem>
                   <SelectItem value="openai">openai（转换）</SelectItem>
+                  <SelectItem value="codex">codex（Responses）</SelectItem>
                 </SelectContent>
               </Select>
             </div>
