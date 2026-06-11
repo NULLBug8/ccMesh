@@ -5,14 +5,18 @@ use serde_json::Value;
 pub enum UpstreamFormat {
     Claude,
     OpenAiChat,
+    /// 上游原生 OpenAI Responses API（codex 端点）。请求/响应转换与透传由
+    /// [`super::responses_chat`] 处理，不走 [`Transformer`] trait（入站是 Responses 而非 Claude）。
+    OpenAiResponses,
 }
 
 impl UpstreamFormat {
     /// 由端点 `transformer` 字段推断上游格式。
-    /// gemini / openai_responses / codex 等在本项目 Out of Scope，按 Claude 直通处理。
+    /// codex / openai_responses → Responses API；gemini 等其余未知值仍按 Claude 直通处理。
     pub fn from_transformer_name(name: &str) -> Self {
         match name.trim().to_ascii_lowercase().as_str() {
             "openai" | "openai_chat" | "openai-chat" | "openai2" => UpstreamFormat::OpenAiChat,
+            "codex" | "openai_responses" | "openai-responses" => UpstreamFormat::OpenAiResponses,
             _ => UpstreamFormat::Claude,
         }
     }
@@ -46,5 +50,43 @@ pub fn get_transformer(format: UpstreamFormat) -> Box<dyn Transformer> {
     match format {
         UpstreamFormat::Claude => Box::new(IdentityTransformer),
         UpstreamFormat::OpenAiChat => Box::new(super::claude_openai::ClaudeOpenAiTransformer),
+        // Responses（codex）请求转换不走此 trait（入站为 Responses 而非 Claude），由 responses_chat 处理；
+        // 此处返回 Identity 仅为穷尽 match。
+        UpstreamFormat::OpenAiResponses => Box::new(IdentityTransformer),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn codex_maps_to_responses() {
+        assert_eq!(
+            UpstreamFormat::from_transformer_name("codex"),
+            UpstreamFormat::OpenAiResponses
+        );
+        assert_eq!(
+            UpstreamFormat::from_transformer_name("openai_responses"),
+            UpstreamFormat::OpenAiResponses
+        );
+    }
+
+    #[test]
+    fn openai_aliases_map_to_chat() {
+        for n in ["openai", "openai_chat", "openai-chat", "openai2"] {
+            assert_eq!(
+                UpstreamFormat::from_transformer_name(n),
+                UpstreamFormat::OpenAiChat
+            );
+        }
+    }
+
+    #[test]
+    fn unknown_maps_to_claude() {
+        assert_eq!(
+            UpstreamFormat::from_transformer_name("gemini"),
+            UpstreamFormat::Claude
+        );
     }
 }

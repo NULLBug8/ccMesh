@@ -57,7 +57,12 @@ pub fn map_finish_reason(finish: Option<&str>, has_tool: bool) -> &'static str {
     }
 }
 
-/// 构造一条 Claude SSE 事件文本（`event: <type>\ndata: <json>\n\n`）。
-pub fn build_claude_event(event: &str, data: &Value) -> String {
+/// 构造一条 SSE 事件文本（`event: <type>\ndata: <json>\n\n`）。Claude 与 Responses 流共用。
+pub fn build_sse_event(event: &str, data: &Value) -> String {
     format!("event: {event}\ndata: {data}\n\n")
+}
+
+/// 构造一条 Claude SSE 事件文本。
+pub fn build_claude_event(event: &str, data: &Value) -> String {
+    build_sse_event(event, data)
 }
