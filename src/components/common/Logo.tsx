@@ -1,15 +1,28 @@
-import { ZapIcon } from "lucide-react";
+import type { ReactNode } from "react";
 
-export function Logo({ iconOnly = false }: { iconOnly?: boolean }) {
+import logoUrl from "@/assets/logo.png";
+
+export function Logo({
+  iconOnly = false,
+  extra,
+}: {
+  iconOnly?: boolean;
+  extra?: ReactNode;
+}) {
   return (
     <div className="flex items-center gap-2">
-      <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
-        <ZapIcon className="size-4" />
-      </div>
+      <img
+        src={logoUrl}
+        alt="ccMesh"
+        className="size-7 shrink-0 rounded-md"
+      />
       {!iconOnly && (
-        <span className="text-base font-semibold tracking-tight whitespace-nowrap">
-          ccMesh
-        </span>
+        <div className="flex min-w-0 flex-col">
+          <span className="text-base font-semibold leading-tight tracking-tight whitespace-nowrap">
+            ccMesh
+          </span>
+          {extra}
+        </div>
       )}
     </div>
   );
