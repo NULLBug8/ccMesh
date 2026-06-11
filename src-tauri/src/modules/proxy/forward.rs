@@ -287,6 +287,22 @@ pub async fn handle_proxy(
         enabled
     };
 
+    let inbound_label = if inbound_openai {
+        "openai"
+    } else if inbound_responses {
+        "responses"
+    } else {
+        "claude"
+    };
+    tracing::info!(
+        path = %path,
+        inbound = inbound_label,
+        model = model.as_deref().unwrap_or("-"),
+        stream = client_wants_stream,
+        candidates = enabled.len(),
+        "入站请求"
+    );
+
     let resolution = resolver::resolve_endpoint(&hmap, model.as_deref(), &qmap, &enabled);
     if let Some(msg) = resolution.not_found {
         return json_error(StatusCode::BAD_REQUEST, &msg);
@@ -404,6 +420,21 @@ pub async fn handle_proxy(
         } else {
             path.as_str()
         };
+        let route_mode = if responses_to_chat {
+            "responses->chat"
+        } else if needs_transform {
+            "claude->openai"
+        } else {
+            "passthrough"
+        };
+        tracing::info!(
+            endpoint = %ep.name,
+            transformer = %ep.transformer,
+            mode = route_mode,
+            outbound_model = %outbound_model,
+            upstream_path,
+            "转发上游"
+        );
 
         let token = st.active.start(&ep.name);
         let result = tokio::select! {
@@ -424,6 +455,7 @@ pub async fn handle_proxy(
             }
             Some(Ok(resp)) => {
                 let status = resp.status().as_u16();
+                tracing::info!(endpoint = %ep.name, status, "上游响应");
                 // 实际(出站)模型：改写后的 outbound_model 非空且与入站不同（ci）才记录，供前端展示"实际模型"。
                 let requested = model.as_deref().unwrap_or("");
                 let actual_model = if !outbound_model.is_empty()
