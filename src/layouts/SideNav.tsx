@@ -7,7 +7,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle, Logo, LangToggle } from "@/components/common";
-import { UpdateBadge } from "@/components/business";
+import { UpdateBadge, VersionPopover } from "@/components/business";
 import {
   Tooltip,
   TooltipContent,
@@ -31,7 +31,10 @@ export function SideNav() {
       )}
     >
       <div className="flex h-14 shrink-0 items-center border-b border-edge-subtle px-4">
-        <Logo iconOnly={collapsed} />
+        <Logo
+          iconOnly={collapsed}
+          extra={!collapsed ? <VersionPopover /> : undefined}
+        />
       </div>
 
       <div className="flex-1 overflow-y-auto px-2 py-2">
