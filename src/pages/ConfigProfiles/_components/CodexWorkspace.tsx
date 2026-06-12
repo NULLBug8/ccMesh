@@ -95,12 +95,35 @@ export function CodexWorkspace() {
   const [showKey, setShowKey] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<ChannelMeta | null>(null);
 
-  const authText = useMemo(() => {
-    const auth: Record<string, unknown> = { ...(base.auth ?? {}) };
-    if (fields.apiKey) auth.OPENAI_API_KEY = fields.apiKey;
-    else delete auth.OPENAI_API_KEY;
-    return JSON.stringify(auth, null, 2);
-  }, [base.auth, fields.apiKey]);
+  const [authText, setAuthText] = useState("{}");
+
+  /** 改秘钥：同步 auth.json 文本里的 OPENAI_API_KEY。 */
+  const updateApiKey = (v: string) => {
+    setFields((f) => ({ ...f, apiKey: v }));
+    setAuthText((prev) => {
+      let obj: Record<string, unknown>;
+      try {
+        obj = JSON.parse(prev) as Record<string, unknown>;
+      } catch {
+        obj = {};
+      }
+      if (v) obj.OPENAI_API_KEY = v;
+      else delete obj.OPENAI_API_KEY;
+      return JSON.stringify(obj, null, 2);
+    });
+  };
+
+  /** 直接编辑 auth.json：解析回填秘钥；非法 JSON 保留输入不回填。 */
+  const onAuthChange = (text: string) => {
+    setAuthText(text);
+    try {
+      const o = JSON.parse(text);
+      const k = typeof o?.OPENAI_API_KEY === "string" ? o.OPENAI_API_KEY : "";
+      setFields((f) => ({ ...f, apiKey: k }));
+    } catch {
+      // 保持输入
+    }
+  };
 
   useEffect(() => {
     if (!loaded || rightEditable) return;
@@ -130,6 +153,7 @@ export function CodexWorkspace() {
     setName("");
     setFields(EMPTY);
     setGoalMode(false);
+    setAuthText("{}");
     setRightText("");
     setRightEditable(false);
   };
@@ -150,6 +174,7 @@ export function CodexWorkspace() {
       setSubTab("endpoint");
       const f = await toolConfigApi.parseCodex(baseSnap.auth, baseSnap.configToml);
       setFields({ ...f, baseUrl: gateway });
+      setAuthText(JSON.stringify(baseSnap.auth ?? {}, null, 2));
       setGoalMode(readGoals(baseSnap.config));
       setRightEditable(false);
       setLoaded(true);
@@ -168,6 +193,7 @@ export function CodexWorkspace() {
       setSubTab("custom");
       const f = await toolConfigApi.parseCodex(snap.auth ?? {}, snap.configToml ?? "");
       setFields(f);
+      setAuthText(JSON.stringify(snap.auth ?? {}, null, 2));
       setGoalMode(readGoals(snap.config));
       setRightEditable(false);
       setLoaded(true);
@@ -177,6 +203,14 @@ export function CodexWorkspace() {
   };
 
   const buildAuth = (): Record<string, unknown> => {
+    try {
+      const o = JSON.parse(authText);
+      if (o && typeof o === "object" && !Array.isArray(o)) {
+        return o as Record<string, unknown>;
+      }
+    } catch {
+      // auth.json 文本非法 → 回退到 base.auth + 秘钥
+    }
     const auth: Record<string, unknown> = { ...(base.auth ?? {}) };
     if (fields.apiKey) auth.OPENAI_API_KEY = fields.apiKey;
     else delete auth.OPENAI_API_KEY;
@@ -273,7 +307,7 @@ export function CodexWorkspace() {
                     id="cx-key"
                     type={showKey ? "text" : "password"}
                     value={fields.apiKey}
-                    onChange={(e) => setFields((f) => ({ ...f, apiKey: e.target.value }))}
+                    onChange={(e) => updateApiKey(e.target.value)}
                     className="pr-9"
                     placeholder="sk-..."
                   />
@@ -332,9 +366,9 @@ export function CodexWorkspace() {
 
               <div className="flex flex-col gap-2">
                 <Label>配置开关</Label>
-                <label className="flex items-center justify-between gap-2 text-sm text-ink-secondary">
-                  <span>启用 Goal mode（features.goals）</span>
+                <label className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-sm text-ink-secondary">
                   <Switch checked={goalMode} onCheckedChange={setGoalMode} />
+                  启用 Goal mode（features.goals）
                 </label>
                 <p className="px-1 text-xs text-ink-mute">
                   远程压缩 / 写入通用配置依赖代理命名约定与通用配置库，暂未接入。
@@ -342,9 +376,14 @@ export function CodexWorkspace() {
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <Label>auth.json（随秘钥实时联动）</Label>
+                <Label>auth.json（与秘钥双向联动，可直接编辑）</Label>
                 <Suspense fallback={<EditorFallback />}>
-                  <JsonEditor value={authText} theme={theme} readOnly height="120px" />
+                  <JsonEditor
+                    value={authText}
+                    theme={theme}
+                    height="120px"
+                    onChange={onAuthChange}
+                  />
                 </Suspense>
               </div>
             </>

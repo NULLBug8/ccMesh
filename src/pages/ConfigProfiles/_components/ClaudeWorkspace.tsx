@@ -98,10 +98,28 @@ export function ClaudeWorkspace() {
   const [showKey, setShowKey] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<ChannelMeta | null>(null);
 
-  const opText = useMemo(
-    () => JSON.stringify(claudeOperationFragment(fields), null, 2),
-    [fields],
-  );
+  const [opText, setOpText] = useState("");
+
+  const syncOp = (f: ClaudeOperationFields) =>
+    setOpText(JSON.stringify(claudeOperationFragment(f), null, 2));
+
+  /** 表单改字段：同时回写操作字段编辑器文本（避免编辑器只读反映）。 */
+  const updateFields = (patch: Partial<ClaudeOperationFields>) =>
+    setFields((f) => {
+      const next = { ...f, ...patch };
+      syncOp(next);
+      return next;
+    });
+
+  /** 用户直接编辑操作字段编辑器：解析回填表单；非法 JSON 时保留输入不回填。 */
+  const onOpChange = (text: string) => {
+    setOpText(text);
+    try {
+      setFields(parseClaudeFields(JSON.parse(text)));
+    } catch {
+      // 保持用户输入，待 JSON 合法后再回填表单
+    }
+  };
 
   useEffect(() => {
     if (!loaded || rightEditable) return;
@@ -115,6 +133,7 @@ export function ClaudeWorkspace() {
     setName("");
     setFields(EMPTY);
     setToggles(DEFAULT_CLAUDE_TOGGLES);
+    setOpText("");
     setRightText("");
     setRightEditable(false);
   };
@@ -126,7 +145,9 @@ export function ClaudeWorkspace() {
       setName("");
       setSubTab("endpoint");
       setBase(snapshot ?? {});
-      setFields({ ...parseClaudeFields(snapshot), baseUrl: gateway });
+      const f = { ...parseClaudeFields(snapshot), baseUrl: gateway };
+      setFields(f);
+      syncOp(f);
       setToggles(parseClaudeToggles(snapshot));
       setRightEditable(false);
       setLoaded(true);
@@ -142,7 +163,9 @@ export function ClaudeWorkspace() {
       setName(ch.name);
       setSubTab("custom");
       setBase(ch.snapshot ?? {});
-      setFields(parseClaudeFields(ch.snapshot));
+      const f = parseClaudeFields(ch.snapshot);
+      setFields(f);
+      syncOp(f);
       setToggles(parseClaudeToggles(ch.snapshot));
       setRightEditable(false);
       setLoaded(true);
@@ -188,7 +211,7 @@ export function ClaudeWorkspace() {
   });
 
   const setModel = (key: "sonnetModel" | "opusModel" | "haikuModel", b: string, is1m: boolean) =>
-    setFields((f) => ({ ...f, [key]: withOneM(b, is1m) }));
+    updateFields({ [key]: withOneM(b, is1m) } as Partial<ClaudeOperationFields>);
 
   const canSubmit = loaded && name.trim().length > 0;
 
@@ -228,7 +251,7 @@ export function ClaudeWorkspace() {
                 onValueChange={(v) => {
                   const t = v as "endpoint" | "custom";
                   setSubTab(t);
-                  if (t === "endpoint") setFields((f) => ({ ...f, baseUrl: gateway }));
+                  if (t === "endpoint") updateFields({ baseUrl: gateway });
                 }}
               >
                 <TabsList>
@@ -243,7 +266,7 @@ export function ClaudeWorkspace() {
                   id="cl-base"
                   value={fields.baseUrl}
                   readOnly={subTab === "endpoint"}
-                  onChange={(e) => setFields((f) => ({ ...f, baseUrl: e.target.value }))}
+                  onChange={(e) => updateFields({ baseUrl: e.target.value })}
                   placeholder="https://..."
                 />
                 {subTab === "endpoint" && (
@@ -258,7 +281,7 @@ export function ClaudeWorkspace() {
                     id="cl-key"
                     type={showKey ? "text" : "password"}
                     value={fields.apiKey}
-                    onChange={(e) => setFields((f) => ({ ...f, apiKey: e.target.value }))}
+                    onChange={(e) => updateFields({ apiKey: e.target.value })}
                     className="pr-9"
                     placeholder="sk-..."
                   />
@@ -304,7 +327,7 @@ export function ClaudeWorkspace() {
                   id="cl-default"
                   list="claude-adv-models"
                   value={fields.defaultModel}
-                  onChange={(e) => setFields((f) => ({ ...f, defaultModel: e.target.value }))}
+                  onChange={(e) => updateFields({ defaultModel: e.target.value })}
                   placeholder="通常可留空"
                 />
               </div>
@@ -317,28 +340,33 @@ export function ClaudeWorkspace() {
 
               <div className="flex flex-col gap-2">
                 <Label>配置开关</Label>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                <div className="flex flex-wrap gap-x-5 gap-y-2">
                   {CLAUDE_TOGGLE_DEFS.map((def) => (
                     <label
                       key={def.key}
-                      className="flex items-center justify-between gap-2 text-sm text-ink-secondary"
+                      className="inline-flex cursor-pointer items-center gap-1.5 text-sm text-ink-secondary"
                     >
-                      <span className="truncate">{def.label}</span>
                       <Switch
                         checked={toggles[def.key]}
                         onCheckedChange={(v) =>
                           setToggles((t) => ({ ...t, [def.key]: v }))
                         }
                       />
+                      {def.label}
                     </label>
                   ))}
                 </div>
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <Label>操作字段（随表单实时联动）</Label>
+                <Label>操作字段（与表单双向联动，可直接编辑）</Label>
                 <Suspense fallback={<EditorFallback />}>
-                  <JsonEditor value={opText} theme={theme} readOnly height="160px" />
+                  <JsonEditor
+                    value={opText}
+                    theme={theme}
+                    height="160px"
+                    onChange={onOpChange}
+                  />
                 </Suspense>
               </div>
             </>
