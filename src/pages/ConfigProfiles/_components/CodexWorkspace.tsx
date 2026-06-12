@@ -371,7 +371,7 @@ export function CodexWorkspace() {
                 theme={theme}
                 lang="text"
                 readOnly={!rightEditable}
-                height="100%"
+                fill
                 onChange={setRightText}
               />
             </Suspense>

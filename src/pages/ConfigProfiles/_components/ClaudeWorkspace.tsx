@@ -381,7 +381,7 @@ export function ClaudeWorkspace() {
                 value={rightText}
                 theme={theme}
                 readOnly={!rightEditable}
-                height="100%"
+                fill
                 onChange={setRightText}
               />
             </Suspense>
