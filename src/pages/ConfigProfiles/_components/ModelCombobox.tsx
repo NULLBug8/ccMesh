@@ -29,7 +29,14 @@ export function ModelCombobox({
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [autoFocusSearch, setAutoFocusSearch] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+
+  const openMenu = (focusSearch: boolean) => {
+    setQuery("");
+    setAutoFocusSearch(focusSearch);
+    setOpen(true);
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -54,15 +61,14 @@ export function ModelCombobox({
         autoComplete="off"
         className="pr-8"
         onChange={(e) => onChange(e.target.value)}
+        onFocus={() => openMenu(false)}
+        onClick={() => setOpen(true)}
       />
       <button
         type="button"
         tabIndex={-1}
         aria-label="选择模型"
-        onClick={() => {
-          setQuery("");
-          setOpen((o) => !o);
-        }}
+        onClick={() => (open ? setOpen(false) : openMenu(true))}
         className="absolute inset-y-0 right-0 flex items-center px-2.5 text-ink-mute hover:text-ink-secondary"
       >
         <ChevronDownIcon
@@ -74,7 +80,7 @@ export function ModelCombobox({
           <div className="flex items-center gap-1.5 border-b border-edge px-2.5 py-1.5">
             <SearchIcon className="size-3.5 shrink-0 text-ink-mute" />
             <input
-              autoFocus
+              autoFocus={autoFocusSearch}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="搜索模型…"
