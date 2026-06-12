@@ -346,7 +346,7 @@ export function ClaudeWorkspace() {
         </div>
 
         {/* 右栏：整合配置编辑器 */}
-        <div className="flex min-h-0 min-w-0 flex-[2] self-start flex-col gap-2 rounded-lg border border-edge bg-surface p-4">
+        <div className="flex min-h-0 min-w-0 flex-[2] flex-col gap-2 rounded-lg border border-edge bg-surface p-4">
           <div className="flex items-center justify-between">
             <Label>整合配置（完整 settings.json）</Label>
             <div className="flex items-center gap-3">
@@ -375,13 +375,13 @@ export function ClaudeWorkspace() {
               </label>
             </div>
           </div>
-          <div className="min-h-0">
+          <div className="min-h-0 flex-1">
             <Suspense fallback={<EditorFallback />}>
               <JsonEditor
                 value={rightText}
                 theme={theme}
                 readOnly={!rightEditable}
-                height="440px"
+                height="100%"
                 onChange={setRightText}
               />
             </Suspense>
