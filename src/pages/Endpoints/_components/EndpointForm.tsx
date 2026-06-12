@@ -52,6 +52,13 @@ const EMPTY: FormState = {
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+/** 各转换器实际拼接的主请求路径（与后端 forward/test 拼法一致：base 去尾斜杠 + 完整后缀）。 */
+const PATH_BY_TRANSFORMER: Record<string, string> = {
+  claude: "/v1/messages",
+  openai: "/v1/chat/completions",
+  codex: "/v1/responses",
+};
+
 interface Props {
   open: boolean;
   onOpenChange: (o: boolean) => void;
@@ -140,13 +147,18 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
     onError: (e) => toast.error(errMsg(e)),
   });
 
-  const fields: Array<{ k: keyof FormState; label: string; type?: string; ph?: string }> = [
+  const fields: Array<{ k: keyof FormState; label: string; ph?: string }> = [
     { k: "name", label: "名称" },
     { k: "apiUrl", label: "API URL", ph: "https://api.anthropic.com" },
-    { k: "apiKey", label: "API Key", type: "password" },
+    { k: "apiKey", label: "API Key" },
     { k: "model", label: "锁定模型（可选，填则强制覆盖请求 model）" },
     { k: "remark", label: "备注（可选）" },
   ];
+
+  // api_url 辅助提示：按所选转换器实时预览完整请求地址；/v1 结尾会与后端追加的后缀叠成 /v1/v1。
+  const apiUrlBase = form.apiUrl.trim().replace(/\/+$/, "");
+  const hasV1Suffix = /\/v1$/i.test(apiUrlBase);
+  const previewPath = PATH_BY_TRANSFORMER[form.transformer] ?? PATH_BY_TRANSFORMER.claude;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -191,12 +203,24 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
                 ) : (
                   <Input
                     id={f.k}
-                    type={f.type ?? "text"}
+                    type="text"
                     placeholder={f.ph}
                     value={form[f.k] as string}
                     onChange={(e) => set(f.k, e.target.value)}
                   />
                 )}
+                {f.k === "apiUrl" &&
+                  (hasV1Suffix ? (
+                    <p className="px-1 text-xs text-destructive">
+                      URL 不应以 /v1 结尾：实际请求会拼成 {apiUrlBase}
+                      {previewPath}，出现重复的 /v1，请去掉结尾的 /v1
+                    </p>
+                  ) : (
+                    <p className="px-1 text-xs text-ink-mute">
+                      完整请求地址：{apiUrlBase || "{url}"}
+                      {previewPath}（随转换器类型变化）
+                    </p>
+                  ))}
               </div>
             ))}
 
