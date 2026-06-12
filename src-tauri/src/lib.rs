@@ -160,7 +160,17 @@ pub fn run() {
             commands::update::download_and_install,
             commands::update::get_update_settings,
             commands::update::set_update_settings,
-            commands::update::skip_version
+            commands::update::skip_version,
+            commands::tool_config::list_profile_channels,
+            commands::tool_config::get_profile_channel,
+            commands::tool_config::save_profile_channel,
+            commands::tool_config::delete_profile_channel,
+            commands::tool_config::extract_source_record,
+            commands::tool_config::apply_profile_config,
+            commands::tool_config::preview_claude_settings,
+            commands::tool_config::parse_claude_fields,
+            commands::tool_config::preview_codex_config,
+            commands::tool_config::parse_codex_fields
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
