@@ -13,6 +13,9 @@ const Dashboard = lazy(() =>
 const Endpoints = lazy(() =>
   import("@/pages/Endpoints").then((m) => ({ default: m.Endpoints })),
 );
+const ConfigProfiles = lazy(() =>
+  import("@/pages/ConfigProfiles").then((m) => ({ default: m.ConfigProfiles })),
+);
 const Statistics = lazy(() =>
   import("@/pages/Statistics").then((m) => ({ default: m.Statistics })),
 );
@@ -25,6 +28,7 @@ const Settings = lazy(() =>
 const PAGES: Record<ViewId, ComponentType> = {
   dashboard: Dashboard,
   endpoints: Endpoints,
+  configProfiles: ConfigProfiles,
   statistics: Statistics,
   sync: Sync,
   logs: Logs,
