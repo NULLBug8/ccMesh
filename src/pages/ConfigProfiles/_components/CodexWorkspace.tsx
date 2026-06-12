@@ -406,6 +406,7 @@ export function CodexWorkspace() {
                 lang="text"
                 readOnly={!rightEditable}
                 fill
+                highlightPatterns={goalMode ? ["goals"] : []}
                 onChange={setRightText}
               />
             </Suspense>

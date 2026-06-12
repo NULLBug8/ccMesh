@@ -214,6 +214,20 @@ export function ClaudeWorkspace() {
   const setModel = (key: "sonnetModel" | "opusModel" | "haikuModel", b: string, is1m: boolean) =>
     updateFields({ [key]: withOneM(b, is1m) } as Partial<ClaudeOperationFields>);
 
+  // 开关开启时高亮右侧整合编辑器中对应的配置行
+  const togglePatterns = useMemo(() => {
+    const keyOf: Record<keyof ClaudeToggles, string> = {
+      hideAttribution: "attribution",
+      teammates: "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS",
+      toolSearch: "ENABLE_TOOL_SEARCH",
+      effortMax: "CLAUDE_CODE_EFFORT_LEVEL",
+      disableAutoUpdate: "DISABLE_AUTOUPDATER",
+    };
+    return (Object.keys(keyOf) as (keyof ClaudeToggles)[])
+      .filter((k) => toggles[k])
+      .map((k) => keyOf[k]);
+  }, [toggles]);
+
   const canSubmit = loaded && name.trim().length > 0;
 
   return (
@@ -406,6 +420,7 @@ export function ClaudeWorkspace() {
                 theme={theme}
                 readOnly={!rightEditable}
                 fill
+                highlightPatterns={togglePatterns}
                 onChange={setRightText}
               />
             </Suspense>

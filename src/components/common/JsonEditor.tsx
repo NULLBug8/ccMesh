@@ -1,5 +1,9 @@
+import { useMemo } from "react";
 import { json } from "@codemirror/lang-json";
+import type { Extension } from "@codemirror/state";
 import CodeMirror from "@uiw/react-codemirror";
+
+import { lineHighlight } from "./lineHighlight";
 
 interface Props {
   value: string;
@@ -13,6 +17,8 @@ interface Props {
   fill?: boolean;
   /** "json" 启用 JSON 语法高亮；"text" 为纯文本（如 TOML，无内置语言包）。 */
   lang?: "json" | "text";
+  /** 高亮包含任一字符串的行（如开关开启时联动高亮对应配置行）。 */
+  highlightPatterns?: string[];
 }
 
 /**
@@ -28,7 +34,17 @@ export default function JsonEditor({
   height = "240px",
   fill = false,
   lang = "json",
+  highlightPatterns,
 }: Props) {
+  const patternKey = (highlightPatterns ?? []).join("\u0001");
+  const extensions = useMemo(() => {
+    const ext: Extension[] = lang === "json" ? [json()] : [];
+    const patterns = patternKey ? patternKey.split("\u0001") : [];
+    if (patterns.length > 0) ext.push(...lineHighlight(patterns));
+    return ext;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang, patternKey]);
+
   return (
     <div
       className={
@@ -41,7 +57,7 @@ export default function JsonEditor({
         width="100%"
         theme={theme}
         editable={!readOnly}
-        extensions={lang === "json" ? [json()] : []}
+        extensions={extensions}
         onChange={(val) => onChange?.(val)}
         className={"text-sm" + (fill ? " h-full" : "")}
         basicSetup={{ lineNumbers: true, foldGutter: false }}
