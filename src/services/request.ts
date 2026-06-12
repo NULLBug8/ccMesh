@@ -36,6 +36,7 @@ export const Events = {
   requestLogged: "request-logged",
   proxyStatusChanged: "proxy-status-changed",
   endpointHealthChanged: "endpoint-health-changed",
+  endpointsChanged: "endpoints-changed",
   logLine: "log-line",
   updateProgress: "update-progress",
 } as const;

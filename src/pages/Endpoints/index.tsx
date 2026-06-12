@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 
 import { useEndpoints } from "@/hooks/useEndpoints";
-import { healthApi } from "@/services/modules/health";
+import { useEndpointHealthEvents } from "@/hooks/useEndpointHealth";
 import type { Endpoint } from "@/services/modules/endpoint";
 import { useFilterStore, useLayoutStore } from "@/stores";
 import { DnDList } from "./_components/DnDList";
@@ -12,23 +11,14 @@ import { ModelList } from "./_components/ModelList";
 
 export function Endpoints() {
   const { data: endpoints, isLoading } = useEndpoints();
-  const qc = useQueryClient();
   const search = useFilterStore((s) => s.search);
   const enabledOnly = useFilterStore((s) => s.enabledOnly);
   const transformer = useFilterStore((s) => s.transformer);
   const isActive = useFilterStore((s) => s.isActive);
   const view = useLayoutStore((s) => s.endpointView);
 
-  // 熔断状态变化 → 刷新各卡片的实时健康态。
-  useEffect(() => {
-    let un: (() => void) | undefined;
-    healthApi
-      .onHealthChanged(() => qc.invalidateQueries({ queryKey: ["endpoint-health"] }))
-      .then((u) => {
-        un = u;
-      });
-    return () => un?.();
-  }, [qc]);
+  // 熔断/端点变更事件 → 刷新各卡片的实时健康态与列表（共享 hook 统一订阅）。
+  useEndpointHealthEvents();
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Endpoint | null>(null);

@@ -1,4 +1,6 @@
-import { request } from "../request";
+import type { UnlistenFn } from "@tauri-apps/api/event";
+
+import { Events, request, subscribe } from "../request";
 
 /** 单条模型映射：入站模型名 from → 出站（上游真实）模型名 to。 */
 export interface ModelMapping {
@@ -97,4 +99,7 @@ export const endpointApi = {
       transformer,
       useProxy,
     }),
+  /** 订阅端点配置/测试状态变更事件（启停、编辑、手动测试后触发）。 */
+  onChanged: (cb: () => void): Promise<UnlistenFn> =>
+    subscribe(Events.endpointsChanged, () => cb()),
 };

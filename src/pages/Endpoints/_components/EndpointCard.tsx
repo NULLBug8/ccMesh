@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ActivityIcon,
   CopyIcon,
@@ -24,13 +24,13 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
+import { useEndpointHealth } from "@/hooks/useEndpointHealth";
 import {
   advertisedModels,
   endpointApi,
   outboundModels,
   type Endpoint,
 } from "@/services/modules/endpoint";
-import { healthApi } from "@/services/modules/health";
 import type { EndpointView } from "@/stores";
 import { ModelMappingDialog } from "./ModelMappingDialog";
 import { TestBadge } from "./TestBadge";
@@ -59,10 +59,7 @@ export function EndpointCard({
   const [testOpen, setTestOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   // 共享 ["endpoint-health"] 查询（多卡片去重）；展示运行期熔断态。
-  const { data: epHealth } = useQuery({
-    queryKey: ["endpoint-health"],
-    queryFn: healthApi.getEndpointHealth,
-  });
+  const { data: epHealth } = useEndpointHealth();
   const health = epHealth?.find((h) => h.name === endpoint.name);
   const circuitBadge =
     health && health.circuit !== "closed" ? (
@@ -208,12 +205,21 @@ export function EndpointCard({
     </span>
   );
 
+  // 可用性合并：实时请求结果优先于手动测试（healthy/recovering→可用，unhealthy→不可用）；
+  // 无实时数据（端点禁用/代理未运行无记录）或 unknown 时回退手动测试结果 testStatus。
+  const availabilityStatus =
+    health?.status === "healthy" || health?.status === "recovering"
+      ? "available"
+      : health?.status === "unhealthy"
+        ? "unavailable"
+        : endpoint.testStatus;
+
   // 可用性指示：悬停展示该端点模型清单（限高可滚动）
   const availability = (
     <HoverCard openDelay={100} closeDelay={100}>
       <HoverCardTrigger asChild>
         <span className="cursor-default">
-          <TestBadge status={endpoint.testStatus} />
+          <TestBadge status={availabilityStatus} />
         </span>
       </HoverCardTrigger>
       <HoverCardContent side="top" className="max-h-60 w-56 overflow-auto">

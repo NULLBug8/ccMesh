@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
 
@@ -7,6 +7,7 @@ import { StatusDot, TabularText } from "@/components/ui";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
+import { useEndpointHealth, useEndpointHealthEvents } from "@/hooks/useEndpointHealth";
 import { cn } from "@/lib/utils";
 import { circuitDot, healthApi } from "@/services/modules/health";
 import { proxyApi } from "@/services/modules/proxy";
@@ -26,27 +27,15 @@ export function ServiceCard() {
   const setActiveView = useLayoutStore((s) => s.setActiveView);
   const { resolvedTheme } = useTheme();
   const dark = resolvedTheme === "dark";
-  const qc = useQueryClient();
   // 最近一条请求明细对应的端点（与实时监控同源，第一时间反映轮换/故障转移）。
   const [liveEndpoint, setLiveEndpoint] = useState<string | null>(null);
   const { data: health } = useQuery({
     queryKey: ["health"],
     queryFn: healthApi.getHealth,
   });
-  // 端点实时健康/熔断态；熔断状态转换事件到达即刷新。
-  const { data: epHealth } = useQuery({
-    queryKey: ["endpoint-health"],
-    queryFn: healthApi.getEndpointHealth,
-  });
-  useEffect(() => {
-    let un: (() => void) | undefined;
-    healthApi
-      .onHealthChanged(() => qc.invalidateQueries({ queryKey: ["endpoint-health"] }))
-      .then((u) => {
-        un = u;
-      });
-    return () => un?.();
-  }, [qc]);
+  // 端点实时健康/熔断态；健康/端点变更事件到达即刷新（共享 hook 统一订阅）。
+  useEndpointHealthEvents();
+  const { data: epHealth } = useEndpointHealth();
   const healthByName = new Map((epHealth ?? []).map((h) => [h.name, h]));
 
   useEffect(() => {
