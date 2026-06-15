@@ -30,8 +30,7 @@ async fn fetch_model_ids(
     api_key: &str,
     transformer: &str,
 ) -> Vec<String> {
-    let base = api_url.trim_end_matches('/');
-    let url = format!("{base}/v1/models");
+    let url = models_probe::models_url_from_base(api_url);
     let auth = ProbeAuth::primary_for(transformer);
     models_probe::request_model_ids(client, &url, api_key, auth).await
 }

@@ -1,34 +1,153 @@
-# ccMesh
+<div align="center">
+  <img src="docs/screenshots/logo.png" width="128" height="128" alt="ccMesh" />
+  <h1>ccMesh</h1>
 
-基于 Tauri 2 + React + TypeScript 的跨平台桌面代理网关，支持 Windows / macOS / Linux。
+  <p><strong>轻量级跨平台 AI 代理网关桌面应用。</strong></p>
 
-技术栈：Tauri 2、React 19、TypeScript、Vite、SQLite（bundled）、axum/reqwest（rustls）。
+  <p>
+    <a href="https://linux.do/"><img src="https://img.shields.io/badge/Linux.do-Community-2b6de8?style=flat-square" alt="Linux.do"></a>
+    <img src="https://img.shields.io/github/v/release/VkRainB/ccMesh?label=version&color=blue" alt="version" />
+    <img src="https://img.shields.io/badge/license-Apache--2.0-green" alt="license" />
+    <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey" alt="platform" />
+  </p>
+
+  <p>
+    <a href="https://github.com/VkRainB/ccMesh">GitHub</a>
+    ·
+    <a href="https://github.com/VkRainB/ccMesh/releases/latest">下载</a>
+    ·
+    <a href="docs/guides/auto-update-and-release.md">更新与发布</a>
+    ·
+    <a href="README.en.md">English</a>
+  </p>
+</div>
 
 ---
 
-## 开发
+ccMesh 是基于 **Tauri 2 + Rust + React 19** 的桌面端 AI 代理网关：在本机统一接入 Claude / OpenAI / Codex 等多类上游，提供协议转换、模型映射、端点轮换与熔断、请求统计与配置管理等能力。支持 Windows、macOS、Linux。
 
-环境要求：Node.js LTS、pnpm 10+、Rust stable。
+## 界面预览
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/dashboard/index.png" alt="仪表盘" /><br/><sub>仪表盘：代理状态、Token 概览与实时请求监控</sub></td>
+    <td align="center"><img src="docs/screenshots/endpoints/endpoints.png" alt="端点管理" /><br/><sub>端点管理：多端点、模型映射与连通性测试</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/config-profiles/profiles.png" alt="配置文件" /><br/><sub>配置文件：Claude Code / Codex 渠道化管理</sub></td>
+    <td align="center"><img src="docs/screenshots/statistics/statistics.png" alt="统计" /><br/><sub>统计：用量汇总与端点维度分析</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/sync/sync.png" alt="同步" /><br/><sub>同步：配置备份、恢复与导出</sub></td>
+    <td align="center"><img src="docs/screenshots/settings/settings.png" alt="设置" /><br/><sub>设置：全局代理、UA 与系统选项</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><img src="docs/screenshots/theme/index_theme_dark.png" alt="深色主题" /><br/><sub>深色主题界面</sub></td>
+  </tr>
+</table>
+
+## 功能特性
+
+### 仪表盘
+
+- 本地代理服务启停与端口状态一览
+- 今日 Token 用量与请求概览
+- 实时请求监控：模型、耗时、首字延迟、Token 明细
+
+### 端点管理
+
+- 多端点 CRUD、拖拽排序、列表/网格视图
+- 支持 **claude（直通）**、**openai（转换）**、**codex（Responses）** 三类转换器
+- 模型清单维护、入站/出站模型映射、连通性测试
+- 按模型过滤的轮换与熔断，避免无关端点被误伤
+
+### 配置文件
+
+- 以「渠道」管理 Claude Code `settings.json` 与 Codex `auth.json` + `config.toml`
+- 端点写入 / 自定义写入双模式，表单与 JSON 双向联动
+- 保存渠道与应用覆写分离，应用前自动备份
+
+### 统计与同步
+
+- 按应用、端点、模型维度查看历史用量
+- 配置与数据备份、恢复、导出
+
+### 设置
+
+- 全局出站代理、Claude/Codex CLI User-Agent
+- 应用内自动更新（GitHub Releases）
+
+## 安装
+
+最新安装包见 [Releases](https://github.com/VkRainB/ccMesh/releases/latest)。应用支持通过内置更新器拉取新版本（详见 [`docs/guides/auto-update-and-release.md`](docs/guides/auto-update-and-release.md)）。
+
+### Windows
+
+下载 `*-setup.exe`（NSIS）或 `*.msi`，双击安装即可。
+
+### macOS（当前为未签名版本）
+
+由于暂未配置 Apple 开发者签名与公证，首次打开可能被 Gatekeeper 拦截。推荐：
+
+1. 将 ccMesh.app 拖入「应用程序」
+2. **右键** ccMesh →「打开」→ 再次确认「打开」
+
+若提示「已损坏」，可在终端执行：
+
+```bash
+xattr -dr com.apple.quarantine /Applications/ccMesh.app
+```
+
+### Linux
+
+按发行版选择安装包：
+
+- **AppImage（推荐）**
+
+  ```bash
+  chmod +x ccMesh_*.AppImage
+  ./ccMesh_*.AppImage
+  ```
+
+- **deb（Debian/Ubuntu）**
+
+  ```bash
+  sudo apt install ./ccMesh_*_amd64.deb
+  ```
+
+- **rpm（Fedora/RHEL）**
+
+  ```bash
+  sudo dnf install ./ccMesh-*.x86_64.rpm
+  ```
+
+## 从源码构建
+
+**环境要求**
+
+- Rust stable — https://rustup.rs
+- Node.js LTS、pnpm 10+
+- 各平台 Tauri 构建依赖 — https://tauri.app/start/prerequisites/
+
+**开发**
 
 ```bash
 pnpm install
 pnpm tauri dev      # 启动桌面开发环境
-pnpm test           # 运行前端单测
+pnpm test           # 前端单测
 ```
 
----
-
-## 构建
+**生产构建**
 
 ```bash
 pnpm tauri build
 ```
 
-各平台构建依赖：
+各平台额外依赖：
 
-- **Windows**：MSVC 工具链（Visual Studio Build Tools）+ WebView2（Win10/11 一般已内置）。
-- **macOS**：Xcode Command Line Tools。产物为通用二进制（同时支持 Intel 与 Apple Silicon）。
-- **Linux**（Ubuntu/Debian 系，构建机需安装）：
+- **Windows**：MSVC 工具链 + WebView2
+- **macOS**：Xcode Command Line Tools（通用二进制）
+- **Linux**（Ubuntu/Debian 构建机）：
 
   ```bash
   sudo apt-get install -y \
@@ -38,110 +157,35 @@ pnpm tauri build
     patchelf
   ```
 
-> 注意：本项目已开启 `createUpdaterArtifacts`（自动更新签名产物）。本地执行 `pnpm tauri build` 时
-> 必须设置签名私钥环境变量，否则构建会报错：
->
-> ```bash
-> export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/ccmesh_updater.key)"
-> export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""   # 本项目密钥无密码
-> ```
->
-> CI 构建通过仓库 Secret 注入，无需本地操作（见下文「发布」）。
+> 本地 `pnpm tauri build` 若开启 updater 签名产物，需配置 `TAURI_SIGNING_PRIVATE_KEY` 等环境变量，详见 [`docs/guides/auto-update-and-release.md`](docs/guides/auto-update-and-release.md)。
 
----
-
-## 安装说明
-
-### Windows
-
-下载 `*-setup.exe`（NSIS）或 `*.msi`，双击安装即可。
-
-### macOS（重要：当前为未签名版本）
-
-由于暂未配置 Apple 开发者签名与公证证书，下载的 `.dmg` / `.app` **未签名**，
-首次打开会被 Gatekeeper 拦截（提示「已损坏」或「无法验证开发者」）。请用以下任一方法放行：
-
-方法一（推荐，右键打开）：
-
-1. 将 ccMesh.app 拖入「应用程序」。
-2. 在「应用程序」中 **右键点击** ccMesh → 选择「打开」→ 在弹窗再次点「打开」。
-   之后即可正常双击启动。
-
-方法二（终端移除隔离属性）：
+**检查**
 
 ```bash
-# 若提示「已损坏，无法打开」，执行：
-xattr -dr com.apple.quarantine /Applications/ccMesh.app
+pnpm check:front
+pnpm check:rust
 ```
 
-> 正式签名/公证接入后此步骤将不再需要。
+## 技术栈
 
-### Linux
+Tauri 2、Rust、axum、reqwest（rustls）、SQLite、React 19、TypeScript、Vite、TanStack Query、Tailwind CSS v4、shadcn/ui、CodeMirror 6。
 
-提供三种包，按发行版选择：
+## 社区支持
 
-- **AppImage（推荐，免安装、自带依赖）**：
+学 AI，上 L 站：[LinuxDO](https://linux.do/)
 
-  ```bash
-  chmod +x ccMesh_*.AppImage
-  ./ccMesh_*.AppImage
-  ```
+## 许可证
 
-- **deb（Debian/Ubuntu 系）**：
+ccMesh 采用 [Apache License 2.0](LICENSE) 开源协议。
 
-  ```bash
-  sudo apt install ./ccMesh_*_amd64.deb
-  ```
+## Star History
 
-- **rpm（Fedora/RHEL 系）**：
-
-  ```bash
-  sudo dnf install ./ccMesh-*.x86_64.rpm
-  ```
-
-> **系统托盘说明**：本应用使用系统托盘（AppIndicator）。在部分桌面环境（尤其原生 GNOME）下，
-> 托盘图标默认不显示，需安装并启用 AppIndicator 扩展：
-> - GNOME：安装 [AppIndicator and KStatusNotifierItem Support](https://extensions.gnome.org/extension/615/appindicator-support/) 扩展。
-> - 运行时依赖 `libayatana-appindicator3-1`（deb）/ `libayatana-appindicator-gtk3`（rpm），包管理器会自动安装。
-
----
-
-## 自动更新（updater）
-
-应用内更新已接入，更新源指向 GitHub Releases 的 `latest.json`。
-
-> 更新源：`src-tauri/tauri.conf.json` 中 `plugins.updater.endpoints` 已指向
-> `https://github.com/VkRainB/ccMesh/releases/latest/download/latest.json`。
-
-工作机制：CI 构建时生成并上传 `latest.json` 与各平台更新包签名；客户端启动后比对版本拉取更新。
-注意 `latest/download` 仅对**已正式发布**（非草稿、非预发布）的 Release 生效，故需在 GitHub 上手动 Publish 发布草稿后更新才会生效。
-
----
-
-## 发布（GitHub Actions）
-
-发布流程见 `.github/workflows/release.yml`：
-
-- 触发：推送 `v*.*.*` 形式的 tag（如 `v0.1.0`）自动三平台构建并创建 **Release 草稿**；
-  也可在 Actions 页面手动 `workflow_dispatch` 仅验证构建。
-- 平台矩阵：macOS 通用二进制（dmg）、Linux（deb/rpm/AppImage）、Windows（msi/nsis）。
-- 构建完成后在 GitHub Releases 审核草稿并手动 Publish。
-
-> 仓库托管在 Gitee，但 release workflow 为 GitHub Actions，仅在 GitHub 上运行。
-> 需将代码推送/镜像到 GitHub 才能触发构建。
-
-### 需要在 GitHub 仓库配置的 Secrets
-
-| Secret | 用途 | 是否必需 |
-| --- | --- | --- |
-| `TAURI_SIGNING_PRIVATE_KEY` | updater 更新包签名私钥（`~/.tauri/ccmesh_updater.key` 文件内容） | 必需（已开启 updater） |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 私钥密码（本项目为空，可不配或留空） | 可选 |
-| `APPLE_CERTIFICATE` 等 `APPLE_*` | macOS 签名与公证 | 可选（暂无证书，缺失则产出未签名包） |
-
-> updater 私钥已生成在本机 `~/.tauri/ccmesh_updater.key`（**切勿提交到仓库**），
-> 其公钥已写入 `tauri.conf.json` 的 `plugins.updater.pubkey`。
-> 将该私钥文件内容粘贴为 GitHub Secret `TAURI_SIGNING_PRIVATE_KEY` 即可。
-
----
-
-更多跨平台兼容性细节见 [`docs/reports/cross-platform-compat.md`](docs/reports/cross-platform-compat.md)。
+<div align="center">
+  <a href="https://www.star-history.com/#VkRainB/ccMesh&Date">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=VkRainB/ccMesh&type=Date&theme=dark" />
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=VkRainB/ccMesh&type=Date" />
+      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=VkRainB/ccMesh&type=Date" />
+    </picture>
+  </a>
+</div>

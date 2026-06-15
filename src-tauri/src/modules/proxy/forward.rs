@@ -24,6 +24,9 @@ use crate::modules::transform::responses_chat::{
     chat_response_to_responses, responses_request_to_chat, ResponsesStreamConverter,
 };
 use crate::modules::transform::streaming::StreamConverter;
+use crate::modules::transform::reasoning_effort::{
+    downgrade_reasoning_effort_in_responses, is_unsupported_reasoning_effort_error,
+};
 use crate::modules::transform::thinking_rectifier::{
     rectify_anthropic_request, should_rectify_thinking_signature, RectifierConfig,
 };
@@ -523,15 +526,35 @@ pub async fn handle_proxy(
                     }
                 }
                 if !rotation::should_retry_status(status) {
-                    // 整流器启用且本轮未整流：读错误体尝试 thinking 签名整流（透明重试）。
-                    if st.rectifier_config.enabled && !sig_rectified {
+                    // 读错误体：Responses→Chat reasoning_effort 降级 / thinking 签名整流（透明重试）。
+                    let may_downgrade_effort = responses_to_chat;
+                    let may_rectify_sig =
+                        st.rectifier_config.enabled && !sig_rectified;
+                    if may_downgrade_effort || may_rectify_sig {
                         let resp_headers = copy_response_headers(&resp);
                         let err_bytes = resp.bytes().await.unwrap_or_default();
-                        let matched = {
-                            let err_text = String::from_utf8_lossy(&err_bytes);
-                            should_rectify_thinking_signature(Some(&err_text), &st.rectifier_config)
-                        };
-                        if matched {
+                        let err_text = String::from_utf8_lossy(&err_bytes);
+
+                        if may_downgrade_effort
+                            && is_unsupported_reasoning_effort_error(&err_text)
+                        {
+                            if let Some(cj) = body_json.as_mut() {
+                                if downgrade_reasoning_effort_in_responses(cj) {
+                                    tracing::info!(
+                                        endpoint = %ep.name,
+                                        "reasoning.effort 不被上游接受，已降级并重试"
+                                    );
+                                    continue;
+                                }
+                            }
+                        }
+
+                        if may_rectify_sig
+                            && should_rectify_thinking_signature(
+                                Some(&err_text),
+                                &st.rectifier_config,
+                            )
+                        {
                             if let Some(cj) = body_json.as_mut() {
                                 if rectify_anthropic_request(cj).applied {
                                     // 清洗成功：不计失败、不前进轮换，下一轮用整流后的 body_json 重试同端点
@@ -540,6 +563,7 @@ pub async fn handle_proxy(
                                 }
                             }
                         }
+
                         // 未命中 / 无可整流内容：用缓冲错误体原样回传
                         st.stats.record(meta.into_record(
                             Some(status as i64),

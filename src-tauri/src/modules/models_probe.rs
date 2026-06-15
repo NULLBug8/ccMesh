@@ -5,7 +5,8 @@
 //! 2. 同 URL 换另一种鉴权方式重试；
 //! 3. 两种鉴权均失败后，剥离已知兼容子路径构造候选 URL，重复 1-2。
 //!
-//! 明确不做 `/v{N}` 结尾改 `/models` 的候选档位（由表单输入提示兜住）。
+//! 若 base 已以 `/v1` 结尾（如 codex `base_url = http://host:3000/v1`），
+//! 拉取模型时拼接 `/models` 而非 `/v1/models`，避免 `/v1/v1/models`；表单输入值不变。
 
 use serde_json::Value;
 
@@ -65,15 +66,29 @@ impl ProbeAuth {
     }
 }
 
-/// 构造候选模型 URL（已含 `/v1/models` 后缀），去重保序：
+/// 由 API base 构造模型列表 URL：base 已含 `/v1` 时只追加 `/models`。
+pub fn models_url_from_base(api_url: &str) -> String {
+    let base = api_url.trim_end_matches('/');
+    if base_ends_with_v1(base) {
+        format!("{base}/models")
+    } else {
+        format!("{base}/v1/models")
+    }
+}
+
+fn base_ends_with_v1(base: &str) -> bool {
+    base.len() >= 3 && base[base.len() - 3..].eq_ignore_ascii_case("/v1")
+}
+
+/// 构造候选模型 URL（已含 `/models` 或 `/v1/models` 后缀），去重保序：
 /// 原始 base → 剥离已知兼容子路径（大小写不敏感，至多剥离一层）。
 fn build_candidate_urls(api_url: &str) -> Vec<String> {
     let base = api_url.trim_end_matches('/');
-    let mut out = vec![format!("{base}/v1/models")];
+    let mut out = vec![models_url_from_base(base)];
     if let Some(stripped) = strip_known_suffix(base) {
         let stripped = stripped.trim_end_matches('/');
         if !stripped.is_empty() {
-            let url = format!("{stripped}/v1/models");
+            let url = models_url_from_base(stripped);
             if !out.contains(&url) {
                 out.push(url);
             }
@@ -176,11 +191,16 @@ mod tests {
     }
 
     #[test]
-    fn v1_suffix_gets_no_special_handling() {
+    fn v1_suffix_appends_models_not_v1_models() {
         assert_eq!(
             build_candidate_urls("https://x.com/v1"),
-            vec!["https://x.com/v1/v1/models"]
+            vec!["https://x.com/v1/models"]
         );
+        assert_eq!(
+            build_candidate_urls("http://127.0.0.1:3000/v1/"),
+            vec!["http://127.0.0.1:3000/v1/models"]
+        );
+        assert_eq!(models_url_from_base("https://x.com/V1"), "https://x.com/V1/models");
     }
 
     #[test]

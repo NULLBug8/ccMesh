@@ -205,7 +205,7 @@ export function Settings() {
               <Input
                 ref={proxyRef}
                 className="w-56"
-                placeholder="http://127.0.0.1:7897"
+                placeholder="http://127.0.0.1:7890"
                 defaultValue={cfg.proxyUrl}
                 onBlur={(e) => save({ proxyUrl: e.target.value })}
               />
@@ -231,7 +231,7 @@ export function Settings() {
             </div>
           </Row>
         </div>
-        <p className="px-1 text-xs text-ink-mute">例如 127.0.0.1:7897 或 http://proxy:8080</p>
+        <p className="px-1 text-xs text-ink-mute">例如 127.0.0.1:7890 或 http://proxy:8080</p>
       </section>
 
       <section className="flex flex-col gap-2">

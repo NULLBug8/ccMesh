@@ -25,3 +25,39 @@ pub fn home_dir() -> Option<PathBuf> {
         .map(PathBuf::from)
         .filter(|p| !p.as_os_str().is_empty())
 }
+
+/// 本机 Claude Code 配置文件：`~/.claude/settings.json`。
+pub fn claude_settings_path() -> Option<PathBuf> {
+    home_dir().map(|h| h.join(".claude").join("settings.json"))
+}
+
+/// 本机 Codex 鉴权文件：`~/.codex/auth.json`。
+pub fn codex_auth_path() -> Option<PathBuf> {
+    home_dir().map(|h| h.join(".codex").join("auth.json"))
+}
+
+/// 本机 Codex 主配置文件：`~/.codex/config.toml`。
+pub fn codex_config_path() -> Option<PathBuf> {
+    home_dir().map(|h| h.join(".codex").join("config.toml"))
+}
+
+/// 渠道工作目录根：`<app_data_dir>/profiles`（不存在则创建）。
+pub fn profiles_dir(app: &AppHandle) -> AppResult<PathBuf> {
+    let dir = app_data_dir(app)?.join("profiles");
+    std::fs::create_dir_all(&dir)?;
+    Ok(dir)
+}
+
+/// Claude 渠道目录：`<profiles>/claude_code`（不存在则创建）。
+pub fn claude_profiles_dir(app: &AppHandle) -> AppResult<PathBuf> {
+    let dir = profiles_dir(app)?.join("claude_code");
+    std::fs::create_dir_all(&dir)?;
+    Ok(dir)
+}
+
+/// Codex 渠道目录：`<profiles>/codex`（不存在则创建）。
+pub fn codex_profiles_dir(app: &AppHandle) -> AppResult<PathBuf> {
+    let dir = profiles_dir(app)?.join("codex");
+    std::fs::create_dir_all(&dir)?;
+    Ok(dir)
+}

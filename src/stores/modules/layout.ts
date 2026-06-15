@@ -7,6 +7,7 @@ export type EndpointView = "list" | "grid";
 export type ViewId =
   | "dashboard"
   | "endpoints"
+  | "configProfiles"
   | "statistics"
   | "sync"
   | "logs"

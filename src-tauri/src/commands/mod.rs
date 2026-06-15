@@ -7,6 +7,7 @@ pub mod models;
 pub mod proxy;
 pub mod stats;
 pub mod tokens;
+pub mod tool_config;
 pub mod update;
 pub mod usage;
 pub mod webdav;

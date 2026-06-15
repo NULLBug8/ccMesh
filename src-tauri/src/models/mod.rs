@@ -5,5 +5,6 @@ pub mod config;
 pub mod endpoint;
 pub mod proxy;
 pub mod stats;
+pub mod tool_config;
 pub mod usage;
 pub mod webdav;
