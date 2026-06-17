@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/select";
 import {
   endpointApi,
-  outboundModels,
+  litOutboundModels,
   type Endpoint,
   type ModelMapping,
 } from "@/services/modules/endpoint";
@@ -37,7 +37,8 @@ interface Props {
 /** 端点模型映射弹窗：左=入站(手输) 中=→ 右=出站(仅该端点可用模型)，支持多条。 */
 export function ModelMappingDialog({ open, onOpenChange, endpoint }: Props) {
   const qc = useQueryClient();
-  const outbound = outboundModels(endpoint);
+  // 出站候选按点亮模型过滤（未点亮任何项时回退全部），与对外公布口径一致。
+  const outbound = litOutboundModels(endpoint);
   const [rows, setRows] = useState<ModelMapping[]>([]);
 
   useEffect(() => {
@@ -76,12 +77,12 @@ export function ModelMappingDialog({ open, onOpenChange, endpoint }: Props) {
         </DialogHeader>
 
         <p className="text-xs text-ink-mute">
-          客户端用「入站模型」请求，网关转发上游时改写为「出站模型」。出站只能选该端点的可用模型。
+          客户端用「入站模型」请求，网关转发上游时改写为「出站模型」。出站只能选该端点点亮的模型（未点亮任何项时为全部）。
         </p>
 
         {noModels ? (
           <p className="rounded-md border border-edge bg-surface-raised px-3 py-2 text-sm text-ink-secondary">
-            该端点暂无可用模型，请先在端点中配置模型清单或锁定模型，再添加映射。
+            该端点暂无可用的点亮模型，请先在端点中配置模型清单（并点亮）或锁定模型，再添加映射。
           </p>
         ) : (
           <div className="flex flex-col gap-2">

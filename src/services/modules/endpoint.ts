@@ -46,11 +46,24 @@ export interface CreateEndpointRequest {
 
 export type UpdateEndpointRequest = Partial<CreateEndpointRequest>;
 
-/** 出站（真实）模型：锁定 model 优先，否则 models 清单。用于测试连通性 / 映射出站下拉。 */
+/** 出站（真实）模型：锁定 model 优先，否则 models 清单。用于测试连通性。 */
 export function outboundModels(
   ep: Pick<Endpoint, "model" | "models">,
 ): string[] {
   return ep.model ? [ep.model] : ep.models ?? [];
+}
+
+/**
+ * 点亮过滤后的出站（真实）模型：用于模型映射出站下拉，受点亮模型行为影响。
+ * 锁定 model→[model]；否则 activeModels 非空→按 models 顺序取其点亮子集；空→全部 models（兼容旧端点）。
+ */
+export function litOutboundModels(
+  ep: Pick<Endpoint, "model" | "models" | "activeModels">,
+): string[] {
+  if (ep.model) return [ep.model];
+  const models = ep.models ?? [];
+  const active = ep.activeModels ?? [];
+  return active.length > 0 ? models.filter((m) => active.includes(m)) : models;
 }
 
 /**

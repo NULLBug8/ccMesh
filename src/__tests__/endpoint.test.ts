@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   advertisedModels,
+  litOutboundModels,
   outboundModels,
 } from "@/services/modules/endpoint";
 
@@ -62,5 +63,27 @@ describe("outboundModels 不受点亮影响", () => {
       "b",
     ]);
     expect(outboundModels({ model: "x", models: ["a", "b"] })).toEqual(["x"]);
+  });
+});
+
+describe("litOutboundModels 按点亮过滤（模型映射出站候选）", () => {
+  it("空点亮集 → 全量 models（兼容旧端点）", () => {
+    expect(litOutboundModels(ep({ models: ["a", "b", "c"] }))).toEqual([
+      "a",
+      "b",
+      "c",
+    ]);
+  });
+
+  it("非空点亮集 → 仅点亮子集并保持 models 顺序", () => {
+    expect(
+      litOutboundModels(ep({ models: ["a", "b", "c"], activeModels: ["c", "a"] })),
+    ).toEqual(["a", "c"]);
+  });
+
+  it("锁定 model 优先于点亮子集", () => {
+    expect(
+      litOutboundModels(ep({ model: "locked", models: ["a", "b"], activeModels: ["a"] })),
+    ).toEqual(["locked"]);
   });
 });
