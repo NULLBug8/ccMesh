@@ -124,18 +124,15 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
       activeModels: form.activeModels.filter((x) => x !== m),
     });
 
-  // 点亮判定：activeModels 为空 = 全部点亮（兼容旧端点）；非空时仅其中的为点亮。
-  const isLit = (m: string) =>
-    form.activeModels.length === 0 || form.activeModels.includes(m);
-  // 切换点亮：以当前“有效点亮集”为基准增删；归一化——全亮或清空都存为 []（=全部公布）。
+  // 点亮判定：仅 activeModels 中的模型显示为点亮。空集=未显式点亮任何项（由下方提示说明默认全部公布），
+  // 这样点击某模型只影响它自身，不会牵连其它模型。
+  const isLit = (m: string) => form.activeModels.includes(m);
+  // 切换点亮：仅增删该模型自身；保持与 models 一致的顺序并剔除已不存在项。
   const toggleModel = (m: string) => {
-    const lit = new Set(
-      form.activeModels.length === 0 ? form.models : form.activeModels,
-    );
-    if (lit.has(m)) lit.delete(m);
-    else lit.add(m);
-    const next = form.models.filter((x) => lit.has(x));
-    update({ activeModels: next.length === form.models.length ? [] : next });
+    const next = form.activeModels.includes(m)
+      ? form.activeModels.filter((x) => x !== m)
+      : [...form.activeModels, m];
+    update({ activeModels: form.models.filter((x) => next.includes(x)) });
   };
 
   const refresh = useMutation({
@@ -267,8 +264,7 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
                 <Label>模型清单（点击标签切换点亮，亮=对外公布）</Label>
                 <span className="text-xs text-ink-mute">
                   共 {form.models.length}
-                  {form.models.length > 0 &&
-                    `，点亮 ${form.activeModels.length === 0 ? form.models.length : form.activeModels.length}`}
+                  {form.models.length > 0 && `，点亮 ${form.activeModels.length}`}
                 </span>
               </div>
               <div className="flex gap-2">
