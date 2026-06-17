@@ -41,8 +41,8 @@ const EMPTY: CodexOperationFields = {
   reviewModel: "",
 };
 
-/** 源缺失时的 config.toml 模板（来自需求文档）。 */
-const DEFAULT_CODEX_TOML = `model_provider = "OpenAI"
+/** 源缺失时的 config.toml 模板（来自需求文档）；base_url 用当前网关端口动态生成，避免写死 3000。 */
+const defaultCodexToml = (gateway: string) => `model_provider = "OpenAI"
 model = "gpt-5.5"
 review_model = "gpt-5.5"
 model_reasoning_effort = "high"
@@ -53,7 +53,7 @@ model_auto_compact_token_limit = 900000
 [model_providers.OpenAI]
 requires_openai_auth = true
 wire_api = "responses"
-base_url = "http://127.0.0.1:3000/v1"
+base_url = "${gateway}"
 name = "OpenAI"
 `;
 
@@ -167,7 +167,7 @@ export function CodexWorkspace() {
     try {
       const { snapshot } = await toolConfigApi.extract("codex");
       const snap = (snapshot as CodexSnapshot) ?? { auth: {}, configToml: "" };
-      const configToml = snap.configToml?.trim() ? snap.configToml : DEFAULT_CODEX_TOML;
+      const configToml = snap.configToml?.trim() ? snap.configToml : defaultCodexToml(gateway);
       const baseSnap: CodexSnapshot = {
         auth: snap.auth ?? {},
         configToml,

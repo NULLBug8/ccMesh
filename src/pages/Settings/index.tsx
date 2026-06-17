@@ -39,6 +39,8 @@ export function Settings() {
     try {
       await configApi.setConfig(patch);
       qc.invalidateQueries({ queryKey: ["config"] });
+      // 配置文件管理页用 ["app-config"] 读取端口生成端点 URL，端口等变更后需同步刷新
+      qc.invalidateQueries({ queryKey: ["app-config"] });
     } catch (e) {
       toast.error(`保存失败：${errMsg(e)}`);
     }
