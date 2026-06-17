@@ -44,6 +44,8 @@ pub struct EndpointExport {
     #[serde(default)]
     pub models: Vec<String>,
     #[serde(default)]
+    pub active_models: Vec<String>,
+    #[serde(default)]
     pub remark: String,
     #[serde(default)]
     pub sort_order: i64,

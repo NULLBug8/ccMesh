@@ -70,6 +70,7 @@ pub fn clone_endpoint(state: State<AppState>, id: i64) -> AppResult<Endpoint> {
         transformer: src.transformer,
         model: src.model,
         models: src.models,
+        active_models: src.active_models,
         model_mappings: src.model_mappings,
         remark: src.remark,
     };

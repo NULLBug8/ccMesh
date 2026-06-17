@@ -119,6 +119,8 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE endpoints ADD COLUMN model_mappings TEXT NOT NULL DEFAULT '[]';",
     // v8：request_logs 记录实际(出站)模型。仅当映射/锁定改写后与请求模型不同才有值，旧行/透传为 NULL。
     "ALTER TABLE request_logs ADD COLUMN actual_model TEXT;",
+    // v9：端点点亮（对外公布）模型子集（JSON 数组）。空数组=全部公布（向后兼容旧端点）。
+    "ALTER TABLE endpoints ADD COLUMN active_models TEXT NOT NULL DEFAULT '[]';",
 ];
 
 /// 幂等执行迁移：读取 `schema_version` 当前版本，仅应用尚未执行的脚本。
@@ -253,5 +255,17 @@ mod tests {
             rows.filter_map(Result::ok).collect()
         };
         assert!(cols.contains(&"actual_model".to_string()));
+    }
+
+    #[test]
+    fn v9_adds_active_models_column() {
+        let c = Connection::open_in_memory().unwrap();
+        run_migrations(&c).unwrap();
+        let cols: Vec<String> = {
+            let mut stmt = c.prepare("PRAGMA table_info(endpoints)").unwrap();
+            let rows = stmt.query_map([], |r| r.get::<_, String>(1)).unwrap();
+            rows.filter_map(Result::ok).collect()
+        };
+        assert!(cols.contains(&"active_models".to_string()));
     }
 }

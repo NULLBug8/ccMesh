@@ -60,6 +60,7 @@ pub fn build_config_bundle(conn: &Connection) -> AppResult<ConfigBundle> {
             transformer: e.transformer,
             model: e.model,
             models: e.models,
+            active_models: e.active_models,
             remark: e.remark,
             sort_order: e.sort_order,
             credentials,
@@ -115,12 +116,20 @@ pub fn import_config_bundle(
             .optional()?;
 
         let models_json = serde_json::to_string(&ep.models).unwrap_or_else(|_| "[]".to_string());
+        // 点亮子集规整为 models 子集后再持久化，避免迁移包脏数据。
+        let active: Vec<String> = ep
+            .active_models
+            .iter()
+            .filter(|a| ep.models.iter().any(|m| m == *a))
+            .cloned()
+            .collect();
+        let active_json = serde_json::to_string(&active).unwrap_or_else(|_| "[]".to_string());
         let id = match existing {
             Some(id) if overwrite => {
                 tx.execute(
                     "UPDATE endpoints SET api_url=?1, api_key=?2, auth_mode=?3, enabled=?4,
-                        use_proxy=?5, transformer=?6, model=?7, models=?8, remark=?9,
-                        sort_order=?10, updated_at=datetime('now') WHERE id=?11",
+                        use_proxy=?5, transformer=?6, model=?7, models=?8, active_models=?9, remark=?10,
+                        sort_order=?11, updated_at=datetime('now') WHERE id=?12",
                     params![
                         ep.api_url,
                         ep.api_key,
@@ -130,6 +139,7 @@ pub fn import_config_bundle(
                         ep.transformer,
                         ep.model,
                         models_json,
+                        active_json,
                         ep.remark,
                         ep.sort_order,
                         id,
@@ -149,8 +159,8 @@ pub fn import_config_bundle(
             None => {
                 tx.execute(
                     "INSERT INTO endpoints
-                        (name, api_url, api_key, auth_mode, enabled, use_proxy, transformer, model, models, remark, sort_order)
-                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
+                        (name, api_url, api_key, auth_mode, enabled, use_proxy, transformer, model, models, active_models, remark, sort_order)
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
                     params![
                         ep.name,
                         ep.api_url,
@@ -161,6 +171,7 @@ pub fn import_config_bundle(
                         ep.transformer,
                         ep.model,
                         models_json,
+                        active_json,
                         ep.remark,
                         ep.sort_order,
                     ],

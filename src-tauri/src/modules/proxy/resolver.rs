@@ -92,9 +92,14 @@ fn by_name(name: &str, model_override: Option<String>, enabled: &[Endpoint]) -> 
 
 /// 端点对外公布/可路由匹配的模型集合：基础可用模型（锁定 `model` 优先，否则 `models` 清单）
 /// 并入所有映射的入站名（`model_mappings[].from`）。大小写不敏感去重、保留首次出现的原样写法。
+///
+/// 点亮过滤：当 `active_models` 非空时，基础集合仅取点亮子集（其余视为保留不公布）；
+/// 空集表示全部公布（向后兼容旧端点）。锁定 `model` 优先于清单，不受点亮影响。
 pub fn advertised_models(ep: &Endpoint) -> Vec<String> {
     let base: Vec<String> = if !ep.model.trim().is_empty() {
         vec![ep.model.clone()]
+    } else if !ep.active_models.is_empty() {
+        ep.active_models.clone()
     } else {
         ep.models.clone()
     };
@@ -174,6 +179,7 @@ mod tests {
             transformer: "claude".into(),
             model: "".into(),
             models: Vec::new(),
+            active_models: Vec::new(),
             model_mappings: Vec::new(),
             remark: "".into(),
             sort_order: 0,
@@ -330,6 +336,28 @@ mod tests {
         assert_eq!(adv.len(), 2);
         assert!(adv.iter().any(|m| m.eq_ignore_ascii_case("claude-opus-4-8")));
         assert!(adv.iter().any(|m| m.eq_ignore_ascii_case("gpt-5")));
+    }
+
+    #[test]
+    fn advertised_models_active_subset_filters_base() {
+        // 点亮 a、c：仅公布点亮子集 + 映射入站名；b 保留不公布
+        let e = Endpoint {
+            active_models: vec!["a".into(), "c".into()],
+            ..ep_mapped("ep", &["a", "b", "c"], &[("alias", "a")])
+        };
+        let adv = advertised_models(&e);
+        assert!(adv.iter().any(|m| m == "a"));
+        assert!(adv.iter().any(|m| m == "c"));
+        assert!(adv.iter().any(|m| m == "alias"));
+        assert!(!adv.iter().any(|m| m == "b")); // 未点亮 → 不公布
+    }
+
+    #[test]
+    fn advertised_models_empty_active_publishes_all() {
+        // 空点亮集 → 全量公布（向后兼容）
+        let e = ep_with_models("ep", &["a", "b", "c"]);
+        let adv = advertised_models(&e);
+        assert_eq!(adv.len(), 3);
     }
 
     #[test]

@@ -27,6 +27,9 @@ pub struct Endpoint {
     pub model: String,
     /// 对外暴露/已选的模型清单（聚合型端点，供 /v1/models 公布与 UI 展示）。
     pub models: Vec<String>,
+    /// 点亮（对外公布）的模型子集：`models` 的子集。空数组表示全部公布（向后兼容旧端点）；
+    /// 非空时仅这些模型对外公布与可路由，其余视为保留不公布。
+    pub active_models: Vec<String>,
     /// 入站→出站模型映射。客户端用入站名请求 → 路由匹配 + 改写为出站名转发上游。
     pub model_mappings: Vec<ModelMapping>,
     pub remark: String,
@@ -57,6 +60,8 @@ pub struct CreateEndpointRequest {
     #[serde(default)]
     pub models: Vec<String>,
     #[serde(default)]
+    pub active_models: Vec<String>,
+    #[serde(default)]
     pub model_mappings: Vec<ModelMapping>,
     #[serde(default)]
     pub remark: String,
@@ -74,6 +79,7 @@ pub struct UpdateEndpointRequest {
     pub transformer: Option<String>,
     pub model: Option<String>,
     pub models: Option<Vec<String>>,
+    pub active_models: Option<Vec<String>>,
     pub model_mappings: Option<Vec<ModelMapping>>,
     pub remark: Option<String>,
 }

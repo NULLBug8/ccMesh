@@ -3,7 +3,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 use crate::error::{AppError, AppResult};
 use crate::models::endpoint::{CreateEndpointRequest, Endpoint, UpdateEndpointRequest};
 
-const COLS: &str = "id, name, api_url, api_key, auth_mode, enabled, use_proxy, transformer, model, models, model_mappings, remark, sort_order, test_status, created_at, updated_at";
+const COLS: &str = "id, name, api_url, api_key, auth_mode, enabled, use_proxy, transformer, model, models, active_models, model_mappings, remark, sort_order, test_status, created_at, updated_at";
 
 fn row_to_endpoint(row: &Row) -> rusqlite::Result<Endpoint> {
     Ok(Endpoint {
@@ -18,6 +18,10 @@ fn row_to_endpoint(row: &Row) -> rusqlite::Result<Endpoint> {
         model: row.get("model")?,
         models: {
             let s: String = row.get("models")?;
+            serde_json::from_str(&s).unwrap_or_default()
+        },
+        active_models: {
+            let s: String = row.get("active_models")?;
             serde_json::from_str(&s).unwrap_or_default()
         },
         model_mappings: {
@@ -61,6 +65,15 @@ fn require(conn: &Connection, id: i64) -> AppResult<Endpoint> {
     get_by_id(conn, id)?.ok_or_else(|| AppError::NotFound(format!("端点 #{id} 不存在")))
 }
 
+/// 将点亮子集规整为 `models` 的子集（大小写敏感按原样保留），剔除已移除的模型；保持 active 原有顺序。
+fn sanitize_active(models: &[String], active: &[String]) -> Vec<String> {
+    active
+        .iter()
+        .filter(|a| models.iter().any(|m| m == *a))
+        .cloned()
+        .collect()
+}
+
 pub fn create(conn: &Connection, req: &CreateEndpointRequest) -> AppResult<Endpoint> {
     if req.name.trim().is_empty() {
         return Err(AppError::InvalidArgument("端点名称不能为空".into()));
@@ -81,10 +94,12 @@ pub fn create(conn: &Connection, req: &CreateEndpointRequest) -> AppResult<Endpo
         |r| r.get(0),
     )?;
 
+    // 点亮子集规整为 models 的子集（去除已不存在的模型，避免脏数据）。
+    let active = sanitize_active(&req.models, &req.active_models);
     conn.execute(
         "INSERT INTO endpoints
-            (name, api_url, api_key, auth_mode, enabled, use_proxy, transformer, model, models, model_mappings, remark, sort_order)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            (name, api_url, api_key, auth_mode, enabled, use_proxy, transformer, model, models, active_models, model_mappings, remark, sort_order)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         params![
             req.name,
             req.api_url,
@@ -95,6 +110,7 @@ pub fn create(conn: &Connection, req: &CreateEndpointRequest) -> AppResult<Endpo
             req.transformer,
             req.model,
             serde_json::to_string(&req.models).unwrap_or_else(|_| "[]".into()),
+            serde_json::to_string(&active).unwrap_or_else(|_| "[]".into()),
             serde_json::to_string(&req.model_mappings).unwrap_or_else(|_| "[]".into()),
             req.remark,
             next_order,
@@ -141,19 +157,24 @@ pub fn update(conn: &Connection, id: i64, req: &UpdateEndpointRequest) -> AppRes
     if let Some(ref v) = req.models {
         e.models = v.clone();
     }
+    if let Some(ref v) = req.active_models {
+        e.active_models = v.clone();
+    }
     if let Some(ref v) = req.model_mappings {
         e.model_mappings = v.clone();
     }
     if let Some(ref v) = req.remark {
         e.remark = v.clone();
     }
+    // models 或 active_models 任一变更后，重新规整点亮子集为 models 的子集。
+    e.active_models = sanitize_active(&e.models, &e.active_models);
 
     conn.execute(
         "UPDATE endpoints SET
             name = ?1, api_url = ?2, api_key = ?3, auth_mode = ?4, enabled = ?5,
-            use_proxy = ?6, transformer = ?7, model = ?8, models = ?9, model_mappings = ?10,
-            remark = ?11, updated_at = datetime('now')
-         WHERE id = ?12",
+            use_proxy = ?6, transformer = ?7, model = ?8, models = ?9, active_models = ?10,
+            model_mappings = ?11, remark = ?12, updated_at = datetime('now')
+         WHERE id = ?13",
         params![
             e.name,
             e.api_url,
@@ -164,6 +185,7 @@ pub fn update(conn: &Connection, id: i64, req: &UpdateEndpointRequest) -> AppRes
             e.transformer,
             e.model,
             serde_json::to_string(&e.models).unwrap_or_else(|_| "[]".into()),
+            serde_json::to_string(&e.active_models).unwrap_or_else(|_| "[]".into()),
             serde_json::to_string(&e.model_mappings).unwrap_or_else(|_| "[]".into()),
             e.remark,
             id,
@@ -224,6 +246,7 @@ mod tests {
             transformer: "claude".into(),
             model: String::new(),
             models: Vec::new(),
+            active_models: Vec::new(),
             model_mappings: Vec::new(),
             remark: String::new(),
         }
@@ -231,17 +254,8 @@ mod tests {
 
     fn upd(enabled: Option<bool>) -> UpdateEndpointRequest {
         UpdateEndpointRequest {
-            name: None,
-            api_url: None,
-            api_key: None,
-            auth_mode: None,
             enabled,
-            use_proxy: None,
-            transformer: None,
-            model: None,
-            models: None,
-            model_mappings: None,
-            remark: None,
+            ..Default::default()
         }
     }
 
@@ -302,6 +316,47 @@ mod tests {
         let got2 = get_by_id(&c, created.id).unwrap().unwrap();
         assert!(got2.models.is_empty());
         assert!(!got2.use_proxy);
+    }
+
+    #[test]
+    fn active_models_roundtrip_and_sanitized_to_subset() {
+        let c = db();
+        let mut r = req("agg");
+        r.models = vec!["a".into(), "b".into(), "c".into()];
+        // 点亮 a、b，以及一个不在 models 中的 z（应被剔除）
+        r.active_models = vec!["a".into(), "b".into(), "z".into()];
+        let created = create(&c, &r).unwrap();
+        assert_eq!(created.active_models, vec!["a".to_string(), "b".to_string()]);
+
+        // 旧端点（未传 active）默认空 = 全量公布
+        let bare = create(&c, &req("bare")).unwrap();
+        assert!(bare.active_models.is_empty());
+
+        // update：移除 model b 后，点亮集应同步剔除 b
+        update(
+            &c,
+            created.id,
+            &UpdateEndpointRequest {
+                models: Some(vec!["a".into(), "c".into()]),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let got = get_by_id(&c, created.id).unwrap().unwrap();
+        assert_eq!(got.active_models, vec!["a".to_string()]);
+
+        // update：仅改点亮集
+        update(
+            &c,
+            created.id,
+            &UpdateEndpointRequest {
+                active_models: Some(vec!["c".into()]),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let got2 = get_by_id(&c, created.id).unwrap().unwrap();
+        assert_eq!(got2.active_models, vec!["c".to_string()]);
     }
 
     #[test]
