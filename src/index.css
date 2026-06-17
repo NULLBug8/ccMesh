@@ -6,7 +6,8 @@
 /*
   Unified Dark Stripe design language.
   来源：r-app/DESIGN.md（dark-first）。:root = light 变体（为浅底适配，DESIGN.md 未原生定义），.dark = 原始 Dark Stripe 暗色。
-  共享品牌令牌（primary / primary-foreground / ring / success / chart-*）仅在 :root 定义并被 .dark 继承。
+  共享品牌令牌（primary / ring / success / chart-*）仅在 :root 定义并被 .dark 继承；
+  primary-foreground / sidebar-primary-foreground 亮色用白字、暗色在 .dark 显式覆盖为黑字。
 */
 :root {
   --radius: 0.75rem; /* 12px 标准卡片圆角 */
@@ -19,7 +20,7 @@
   --popover: #ffffff;
   --popover-foreground: #18181b;
   --primary: #22c55e;
-  --primary-foreground: #000000;
+  --primary-foreground: #ffffff;
   --secondary: #f4f4f5;
   --secondary-foreground: #18181b;
   --muted: #f4f4f5;
@@ -60,7 +61,7 @@
   --sidebar: #ffffff;
   --sidebar-foreground: #18181b;
   --sidebar-primary: #22c55e;
-  --sidebar-primary-foreground: #000000;
+  --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #f4f4f5;
   --sidebar-accent-foreground: #18181b;
   --sidebar-border: #ececee;
@@ -108,6 +109,10 @@
   --ink-secondary: #a1a1aa;
   --ink-mute: #8a8a97;
   --ink-disabled: #56565f;
+
+  /* 暗色维持绿色主色上的黑字（仅亮色模式按需求改白字，故此处显式覆盖继承值） */
+  --primary-foreground: #000000;
+  --sidebar-primary-foreground: #000000;
 
   /* 暗底强调文字色（更亮以提升可读性） */
   --primary-soft: #4ade80;
