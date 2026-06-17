@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { EyeIcon, EyeOffIcon, PlusIcon, RefreshCwIcon, XIcon } from "lucide-react";
+import { EyeIcon, EyeOffIcon, InfoIcon, PlusIcon, RefreshCwIcon, XIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
 
@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { endpointApi, type Endpoint } from "@/services/modules/endpoint";
 
 const JsonEditor = lazy(() => import("@/components/common/JsonEditor"));
@@ -239,7 +240,7 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
                   ) : (
                     <p className="px-1 text-xs text-ink-mute">
                       完整请求地址：{apiUrlBase || "{url}"}
-                      {previewPath}（随转换器类型变化）
+                      {previewPath}
                     </p>
                   ))}
               </div>
@@ -261,7 +262,21 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
 
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between">
-                <Label>模型清单（点击标签切换点亮，亮=对外公布）</Label>
+                <div className="flex items-center gap-1.5">
+                  <Label>模型清单</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label="模型点亮说明"
+                        className="text-ink-mute hover:text-ink-secondary"
+                      >
+                        <InfoIcon className="size-3.5" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>通过点亮模型对外公布可用模型</TooltipContent>
+                  </Tooltip>
+                </div>
                 <span className="text-xs text-ink-mute">
                   共 {form.models.length}
                   {form.models.length > 0 && `，点亮 ${form.activeModels.length}`}
@@ -333,7 +348,7 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-ink-mute">
-                      全部未点亮时默认全部公布（兼容旧配置）
+                      全部未点亮时默认全部公布
                     </span>
                     <button
                       type="button"

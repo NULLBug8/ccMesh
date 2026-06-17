@@ -39,6 +39,7 @@ export function FilterBar({ onCreate }: { onCreate: () => void }) {
           <SelectItem value="all">全部类型</SelectItem>
           <SelectItem value="claude">claude</SelectItem>
           <SelectItem value="openai">openai</SelectItem>
+          <SelectItem value="codex">codex</SelectItem>
         </SelectContent>
       </Select>
       <div className="flex items-center gap-2">
