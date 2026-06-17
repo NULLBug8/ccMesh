@@ -17,9 +17,13 @@
     "updater:default",
     "process:default",
     "dialog:default",
+    "opener:allow-default-urls",
     {
       "identifier": "opener:allow-open-url",
-      "allow": [{ "url": "https://github.com/VkRainB/ccMesh/*" }]
+      "allow": [
+        { "url": "http://**" },
+        { "url": "https://**" }
+      ]
     }
   ]
 }
