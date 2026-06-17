@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   ActivityIcon,
   CopyIcon,
@@ -239,9 +240,21 @@ export function EndpointCard({
   );
 
   const meta = (
-    <span className="truncate text-xs text-ink-secondary">
-      {endpoint.apiUrl}
-      {endpoint.model ? ` · ${endpoint.model}` : ""}
+    <span className="flex min-w-0 items-center text-xs text-ink-secondary">
+      <button
+        type="button"
+        className="cursor-pointer truncate text-left hover:text-primary hover:underline"
+        title={`在浏览器打开 ${endpoint.apiUrl}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          openUrl(endpoint.apiUrl).catch((err) => toast.error(errMsg(err)));
+        }}
+      >
+        {endpoint.apiUrl}
+      </button>
+      {endpoint.model ? (
+        <span className="shrink-0 whitespace-pre"> · {endpoint.model}</span>
+      ) : null}
     </span>
   );
 

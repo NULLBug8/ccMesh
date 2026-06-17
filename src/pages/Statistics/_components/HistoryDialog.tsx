@@ -69,7 +69,7 @@ export function HistoryDialog() {
           <HistoryIcon className="size-4" /> 历史记录
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-5xl">
+      <DialogContent className="max-w-6xl">
         <DialogHeader>
           <DialogTitle>历史记录</DialogTitle>
         </DialogHeader>
@@ -86,12 +86,12 @@ export function HistoryDialog() {
                   <tr className="sticky top-0 border-b border-edge bg-background text-xs text-ink-secondary">
                     <th className="px-3 py-2 text-left font-medium">日期</th>
                     <th className="px-3 py-2 text-left font-medium">端点</th>
-                    <th className="px-3 py-2 text-right font-medium">请求</th>
-                    <th className="px-3 py-2 text-right font-medium">错误</th>
-                    <th className="px-3 py-2 text-right font-medium">输入</th>
-                    <th className="px-3 py-2 text-right font-medium">输出</th>
-                    <th className="px-3 py-2 text-right font-medium">缓存</th>
-                    <th className="px-3 py-2 text-right font-medium">操作</th>
+                    <th className="px-3 py-2 text-right font-medium whitespace-nowrap">请求</th>
+                    <th className="px-3 py-2 text-right font-medium whitespace-nowrap">错误</th>
+                    <th className="px-3 py-2 text-right font-medium whitespace-nowrap">输入</th>
+                    <th className="px-3 py-2 text-right font-medium whitespace-nowrap">输出</th>
+                    <th className="px-3 py-2 text-right font-medium whitespace-nowrap">缓存</th>
+                    <th className="px-3 py-2 text-right font-medium whitespace-nowrap">操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -104,19 +104,19 @@ export function HistoryDialog() {
                         <TabularText>{r.date}</TabularText>
                       </td>
                       <td className="px-3 py-2">{r.endpointName}</td>
-                      <td className="px-3 py-2 text-right">
+                      <td className="px-3 py-2 text-right whitespace-nowrap">
                         <TabularText>{r.requests}</TabularText>
                       </td>
-                      <td className="px-3 py-2 text-right">
+                      <td className="px-3 py-2 text-right whitespace-nowrap">
                         <TabularText>{r.errors}</TabularText>
                       </td>
-                      <td className="px-3 py-2 text-right">
+                      <td className="px-3 py-2 text-right whitespace-nowrap">
                         <TabularText>{r.inputTokens}</TabularText>
                       </td>
-                      <td className="px-3 py-2 text-right">
+                      <td className="px-3 py-2 text-right whitespace-nowrap">
                         <TabularText>{r.outputTokens}</TabularText>
                       </td>
-                      <td className="px-3 py-2 text-right">
+                      <td className="px-3 py-2 text-right whitespace-nowrap">
                         <TabularText>
                           {r.cacheCreationTokens + r.cacheReadTokens}
                         </TabularText>
