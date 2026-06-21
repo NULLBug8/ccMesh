@@ -1,6 +1,7 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import { configApi } from "@/services/modules/config";
+import { request } from "@/services/request";
 
 let revealed = false;
 
@@ -24,6 +25,9 @@ export async function revealMainWindow(): Promise<void> {
     const win = getCurrentWindow();
     await win.show();
     await win.setFocus();
+    // Linux：首屏 show() 后触发窗口交互重激活，修复 WebKitGTK 整窗点击无响应；
+    // 其他平台为 no-op。失败不影响窗口已显示，吞掉异常。
+    await request("notify_window_shown").catch(() => {});
   } catch {
     // 浏览器预览或窗口不可用时忽略
   }
