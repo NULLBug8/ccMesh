@@ -1,7 +1,0 @@
-{"file":"docs/task-plan/tasks/01-protocol-transform-rectifier/prd.md","reason":"本任务决策真相源：范围 A+B+C、弃 D、空处理只走 canonicalization 不做字段剥离"}
-{"file":"docs/task-plan/tasks/01-protocol-transform-rectifier/feature.md","reason":"落地细节：新增/修改文件清单、任务拆解 01.x、数据契约、forward 重试约束、提交策略"}
-{"file":"docs/task-plan/tasks/01-protocol-transform-rectifier/research/cc-switch-real-design.md","reason":"cc-switch 真实设计（含摘要 vs 源码差异表）与关键 file:line，移植前必读"}
-{"file":"docs/task-plan/tasks/01-protocol-transform-rectifier/research/current-transform-proxy.md","reason":"本项目转换/转发现状与三项集成的精确落点（行号已核对）"}
-{"file":"E:/myCode/cc-switch/src-tauri/src/proxy/json_canonical.rs","reason":"A 主动 canonicalization 的移植来源（整文件可移植，去 sha2 部分）"}
-{"file":"E:/myCode/cc-switch/src-tauri/src/proxy/thinking_rectifier.rs","reason":"B thinking 签名 rectifier 的移植来源（should_rectify + rectify_anthropic_request + 顶层 thinking 删除）"}
-{"file":"E:/myCode/cc-switch/src-tauri/src/proxy/providers/streaming.rs","reason":"C 流式多工具 by index 的设计借鉴来源（DeltaToolCall.index / tool_blocks_by_index / anthropic_index 映射）"}

@@ -1,5 +1,0 @@
-{"file":"docs/task-plan/tasks/2027-config-entry/prd.md","reason":"本任务的需求决策（字段契约、存储模型、范围）"}
-{"file":"docs/task-plan/tasks/2027-config-entry/feature.md","reason":"落地细节：具体文件落点、任务拆解、数据契约、提交策略、开关映射占位"}
-{"file":"docs/task-plan/配置入口.md","reason":"原始需求文档（界面流程、字段、工作目录结构）"}
-{"file":"docs/task-plan/tasks/2027-config-entry/research/cc-switch-config-io.md","reason":"参考实现：原子写、双文件事务、TOML 保注释、快照/备份模型"}
-{"file":"docs/task-plan/tasks/2027-config-entry/research/ccmesh-architecture.md","reason":"ccMesh 落点：页面切换/命令注册/缺失的 toml 与原子写工具/可复用组件"}

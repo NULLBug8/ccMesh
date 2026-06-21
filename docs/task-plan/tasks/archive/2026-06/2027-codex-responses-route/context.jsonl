@@ -1,5 +1,0 @@
-{"file":"docs/task-plan/tasks/2027-codex-responses-route/prd.md","reason":"需求决策：codex 端点语义、透传/转换判定、关键字段约定、Out of Scope"}
-{"file":"docs/task-plan/tasks/2027-codex-responses-route/feature.md","reason":"落地细节：文件落点行号、任务拆解 2027.x、数据契约、提交策略"}
-{"file":"docs/task-plan/tasks/2027-codex-responses-route/research/01-current-arch.md","reason":"本项目架构落点：transformer/UpstreamFormat、forward.rs 入站识别与四象限、models_cache、迁移、前端选项的精确位置"}
-{"file":"docs/task-plan/tasks/2027-codex-responses-route/research/03-moon-bridge.md","reason":"字段映射校对基准：Responses↔Chat 请求/响应/流式映射表、透传规则、stop/parallel_tool_calls 差异点"}
-{"file":"docs/task-plan/tasks/2027-codex-responses-route/research/04-codex-params.md","reason":"codex 官方 Responses API 参数 schema 与默认值，请求/响应字段定义"}
