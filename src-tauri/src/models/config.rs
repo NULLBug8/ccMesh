@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::utils::ua;
+
 /// 自动更新设置。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -80,7 +82,7 @@ impl Default for AppConfig {
             proxy_url: String::new(),
             proxy_enabled: false,
             proxy_for_update: false,
-            openai_ua: String::new(),
+            openai_ua: ua::codex_probe_ua(),
             claude_cli_ua: String::new(),
             update: UpdateSettings::default(),
             webdav: WebDavConfig::default(),

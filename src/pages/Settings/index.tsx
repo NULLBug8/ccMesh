@@ -308,18 +308,18 @@ export function Settings() {
       <section className="flex flex-col gap-2">
         <div>
           <h2 className="text-sm font-medium text-ink-secondary">系统 / 高级</h2>
-          <p className="text-xs text-ink-mute">伪装上游 User-Agent（留空则透传客户端 UA）</p>
+          <p className="text-xs text-ink-mute">伪装上游 User-Agent（清空则透传客户端 UA）</p>
         </div>
         <div className="flex flex-col divide-y divide-edge-subtle rounded-lg border border-edge">
           <div className="flex flex-col gap-1.5 px-5 py-3">
             <div className="flex items-baseline justify-between gap-3">
-              <span className="text-sm">OpenAI 端点 UA</span>
+              <span className="text-sm">OpenAI / Codex 端点 UA</span>
               <span className="truncate font-mono text-xs text-ink-mute">
-                例 codex_cli_rs/0.77.0 (Windows 10.0.26100; x86_64)
+                默认 Codex CLI UA，适配 new-api 客户端限制
               </span>
             </div>
             <Input
-              placeholder="留空透传客户端 UA"
+              placeholder="清空后透传客户端 UA"
               defaultValue={cfg.openaiUa}
               onBlur={(e) => save({ openaiUa: e.target.value })}
             />
@@ -332,7 +332,7 @@ export function Settings() {
               </span>
             </div>
             <Input
-              placeholder="留空透传客户端 UA"
+              placeholder="清空后透传客户端 UA"
               defaultValue={cfg.claudeCliUa}
               onBlur={(e) => save({ claudeCliUa: e.target.value })}
             />

@@ -45,6 +45,7 @@ pub struct RequestRecord {
     pub duration_ms: Option<i64>,
     pub first_byte_ms: Option<i64>,
     pub actual_model: Option<String>,
+    pub error_body: Option<String>,
 }
 
 /// 统计聚合器：内存累加 + 2 秒防抖批量落库 + 零延迟事件推送。
@@ -129,6 +130,7 @@ impl StatsAggregator {
             duration_ms: rec.duration_ms,
             first_byte_ms: rec.first_byte_ms,
             actual_model: rec.actual_model,
+            error_body: rec.error_body,
         };
         {
             let mut pl = self.pending_logs.lock().unwrap();

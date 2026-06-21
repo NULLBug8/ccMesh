@@ -32,6 +32,9 @@ use crate::modules::transform::thinking_rectifier::{
 };
 use crate::modules::transform::transformer::{get_transformer, UpstreamFormat};
 use crate::modules::usage;
+use crate::utils::ua;
+
+const MAX_ERROR_BODY_BYTES: usize = 4096;
 
 /// 每端点在途请求计数 + 取消令牌（手动切换时中止在途请求）。
 #[derive(Default)]
@@ -130,6 +133,16 @@ impl RequestMeta {
         is_error: bool,
         tu: usage::TokenUsage,
     ) -> RequestRecord {
+        self.into_record_with_error_body(status_code, is_error, tu, None)
+    }
+
+    fn into_record_with_error_body(
+        &self,
+        status_code: Option<i64>,
+        is_error: bool,
+        tu: usage::TokenUsage,
+        error_body: Option<String>,
+    ) -> RequestRecord {
         RequestRecord {
             endpoint_name: self.endpoint.clone(),
             model: self.model.clone(),
@@ -143,6 +156,7 @@ impl RequestMeta {
             duration_ms: Some(chrono::Utc::now().timestamp_millis() - self.started_ms),
             first_byte_ms: self.first_byte_ms,
             actual_model: self.actual_model.clone(),
+            error_body,
         }
     }
 }
@@ -155,6 +169,25 @@ fn json_error(status: StatusCode, message: &str) -> Response {
         })),
     )
         .into_response()
+}
+
+fn truncate_error_body(text: &str) -> String {
+    if text.len() <= MAX_ERROR_BODY_BYTES {
+        return text.to_string();
+    }
+    let mut end = MAX_ERROR_BODY_BYTES;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}... [已截断，原长度 {} 字节]", &text[..end], text.len())
+}
+
+fn error_body_from_bytes(bytes: &Bytes) -> Option<String> {
+    if bytes.is_empty() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(bytes);
+    Some(truncate_error_body(&text))
 }
 
 fn empty_candidates_message(model: Option<&str>, breaker_exhausted: bool) -> String {
@@ -471,6 +504,8 @@ pub async fn handle_proxy(
     let mut attempts_on_current = 0u32;
     let mut last_err = String::new();
     let mut last_endpoint = String::new();
+    let mut last_status: Option<u16> = None;
+    let mut last_error_body: Option<String> = None;
     // 最后一次实际尝试的出站路径：全部失败兜底记录时填入，避免前端按入站格式误推断。
     let mut last_upstream_path = String::new();
     // thinking 签名整流一次性标志：命中后清洗重试，仅一次，防死循环。
@@ -686,11 +721,11 @@ pub async fn handle_proxy(
                     // 读错误体：Responses→Chat reasoning_effort 降级 / thinking 签名整流（透明重试）。
                     let may_downgrade_effort = responses_to_chat;
                     let may_rectify_sig = st.rectifier_config.enabled && !sig_rectified;
-                    if may_downgrade_effort || may_rectify_sig {
-                        let resp_headers = copy_response_headers(&resp);
-                        let err_bytes = resp.bytes().await.unwrap_or_default();
-                        let err_text = String::from_utf8_lossy(&err_bytes);
+                    let resp_headers = copy_response_headers(&resp);
+                    let err_bytes = resp.bytes().await.unwrap_or_default();
+                    let err_text = String::from_utf8_lossy(&err_bytes);
 
+                    if may_downgrade_effort || may_rectify_sig {
                         if may_downgrade_effort && is_unsupported_reasoning_effort_error(&err_text)
                         {
                             if let Some(cj) = body_json.as_mut() {
@@ -720,22 +755,27 @@ pub async fn handle_proxy(
                         }
 
                         // 未命中 / 无可整流内容：用缓冲错误体原样回传
-                        st.stats.record(meta.into_record(
+                        st.stats.record(meta.into_record_with_error_body(
                             Some(status as i64),
                             status >= 400,
                             usage::TokenUsage::default(),
+                            error_body_from_bytes(&err_bytes),
                         ));
                         return relay_buffered_error(status, resp_headers, err_bytes);
                     }
-                    // 最终非重试状态（400/401）原样回传（错误无 usage）
-                    st.stats.record(meta.into_record(
+                    // 最终非重试状态（400/401）缓冲回传，便于记录上游错误体。
+                    st.stats.record(meta.into_record_with_error_body(
                         Some(status as i64),
                         status >= 400,
                         usage::TokenUsage::default(),
+                        error_body_from_bytes(&err_bytes),
                     ));
-                    return relay_passthrough(resp);
+                    return relay_buffered_error(status, resp_headers, err_bytes);
                 }
                 last_err = format!("上游返回 {status}");
+                last_status = Some(status);
+                let err_bytes = resp.bytes().await.unwrap_or_default();
+                last_error_body = error_body_from_bytes(&err_bytes);
                 attempts_on_current += 1;
                 if attempts_on_current >= rotation::CONSECUTIVE_FAIL_SWITCH && !use_specific {
                     st.rotation.advance(n);
@@ -775,12 +815,13 @@ pub async fn handle_proxy(
             upstream_url: String::new(),
             inbound_path: path.clone(),
             upstream_path: last_upstream_path.clone(),
-            status_code: None,
+            status_code: last_status.map(i64::from),
             is_error: true,
             usage: usage::TokenUsage::default(),
             duration_ms: Some(chrono::Utc::now().timestamp_millis() - started_ms),
             first_byte_ms: None,
             actual_model: None,
+            error_body: last_error_body,
         });
     }
     json_error(
@@ -827,6 +868,9 @@ async fn send_upstream(
         UpstreamFormat::Claude => st.claude_cli_ua.trim(),
     };
     let override_ua = !ua_override.is_empty();
+    let add_codex_originator = override_ua
+        && ua_override.starts_with(ua::CODEX_ORIGINATOR)
+        && !headers.contains_key("originator");
 
     // 复制客户端头部（剔除 Host / Content-Length / Accept-Encoding / 客户端凭证 / 控制头；
     // 仅在配置了伪装 UA 时剔除客户端 user-agent，否则原样透传客户端 UA）
@@ -851,6 +895,9 @@ async fn send_upstream(
     // 配置了伪装 UA 才覆盖；未配置时客户端 UA 已在上面原样透传
     if override_ua {
         rb = rb.header("user-agent", ua_override);
+    }
+    if add_codex_originator {
+        rb = rb.header("originator", ua::CODEX_ORIGINATOR);
     }
 
     // 附加鉴权头（按 transformer / auth_mode）
@@ -887,17 +934,6 @@ fn copy_response_headers(resp: &reqwest::Response) -> HeaderMap {
         }
     }
     out
-}
-
-/// 纯字节流直通（不解析 usage，用于错误响应）。
-fn relay_passthrough(resp: reqwest::Response) -> Response {
-    let status = StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
-    let out = copy_response_headers(&resp);
-    let body = Body::from_stream(resp.bytes_stream());
-    let mut response = Response::new(body);
-    *response.status_mut() = status;
-    *response.headers_mut() = out;
-    response
 }
 
 /// 由已缓冲的错误字节重建响应（错误体被读取用于整流匹配后，无法再流式直通）。
@@ -1064,7 +1100,8 @@ fn stream_transform_response(
 
 #[cfg(test)]
 mod tests {
-    use super::empty_candidates_message;
+    use super::{empty_candidates_message, error_body_from_bytes, truncate_error_body};
+    use axum::body::Bytes;
 
     #[test]
     fn empty_candidates_message_prefers_breaker_reason_over_model() {
@@ -1076,6 +1113,19 @@ mod tests {
     fn empty_candidates_message_reports_unsupported_model_when_not_breaker_exhausted() {
         let msg = empty_candidates_message(Some("gpt-5.5"), false);
         assert_eq!(msg, "所有候选端点均不支持模型 'gpt-5.5'");
+    }
+
+    #[test]
+    fn error_body_from_bytes_keeps_small_body() {
+        let body = error_body_from_bytes(&Bytes::from_static(br#"{"error":"x"}"#));
+        assert_eq!(body.as_deref(), Some(r#"{"error":"x"}"#));
+    }
+
+    #[test]
+    fn truncate_error_body_preserves_utf8_boundary() {
+        let body = truncate_error_body(&"测".repeat(2000));
+        assert!(body.contains("已截断"));
+        assert!(body.is_char_boundary(body.len()));
     }
 }
 

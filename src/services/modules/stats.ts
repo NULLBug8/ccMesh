@@ -71,6 +71,8 @@ export interface RequestLog {
   firstByteMs: number | null;
   /** 实际(出站)模型：映射/锁定改写后与请求模型不同才有值；透传/旧行为 null。 */
   actualModel: string | null;
+  /** 错误响应体（仅错误请求，限长写入）。旧行/无响应体为 null。 */
+  errorBody: string | null;
 }
 
 export interface RequestLogPage {

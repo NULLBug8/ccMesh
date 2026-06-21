@@ -86,6 +86,8 @@ pub struct RequestLog {
     pub first_byte_ms: Option<i64>,
     /// 实际(出站)模型：映射/锁定改写后实际转发上游的模型。仅当与请求模型不同才有值，透传/旧行为 None。
     pub actual_model: Option<String>,
+    /// 错误响应体（仅错误请求，限长写入）。旧行/无响应体为 None。
+    pub error_body: Option<String>,
 }
 
 /// 请求明细分页结果。

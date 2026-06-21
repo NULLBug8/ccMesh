@@ -188,6 +188,25 @@ function statusDot(code: number | null): "success" | "warning" | "danger" {
   return "danger";
 }
 
+export function formatErrorBody(errorBody: string): string {
+  try {
+    return JSON.stringify(JSON.parse(errorBody), null, 2);
+  } catch {
+    return errorBody;
+  }
+}
+
+export function ErrorDetail({ errorBody }: { errorBody: string }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="text-sm font-medium">错误详情</div>
+      <pre className="whitespace-pre-wrap break-words font-mono text-xs text-ink-secondary">
+        {formatErrorBody(errorBody)}
+      </pre>
+    </div>
+  );
+}
+
 /** 旧行无真实路径时，按入站协议推断兜底路由。 */
 function inferPath(format: string): string {
   if (format === "openai") return "/v1/chat/completions";
@@ -228,10 +247,30 @@ function RequestRow({ log }: { log: RequestLog }) {
         {log.upstreamPath || inferPath(log.inboundFormat)}
       </td>
       <td className="px-3 py-2 text-center">
-        <span className="inline-flex items-center gap-1.5">
-          <StatusDot status={statusDot(log.statusCode)} />
-          <TabularText className="text-xs">{log.statusCode ?? "ERR"}</TabularText>
-        </span>
+        {log.isError && log.errorBody ? (
+          <HoverCard openDelay={100} closeDelay={50}>
+            <HoverCardTrigger asChild>
+              <button
+                type="button"
+                aria-label="查看错误详情"
+                title="查看错误详情"
+                className="inline-flex items-center gap-1.5 text-ink-secondary transition-colors hover:text-foreground"
+              >
+                <StatusDot status={statusDot(log.statusCode)} />
+                <TabularText className="text-xs">{log.statusCode ?? "ERR"}</TabularText>
+                <InfoIcon className="size-3.5" />
+              </button>
+            </HoverCardTrigger>
+            <HoverCardContent align="center" className="max-h-72 w-96 overflow-auto">
+              <ErrorDetail errorBody={log.errorBody} />
+            </HoverCardContent>
+          </HoverCard>
+        ) : (
+          <span className="inline-flex items-center gap-1.5">
+            <StatusDot status={statusDot(log.statusCode)} />
+            <TabularText className="text-xs">{log.statusCode ?? "ERR"}</TabularText>
+          </span>
+        )}
       </td>
       <td className="px-3 py-2 text-right text-xs text-ink-secondary">
         <TabularText>

@@ -121,6 +121,8 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE request_logs ADD COLUMN actual_model TEXT;",
     // v9：端点点亮（对外公布）模型子集（JSON 数组）。空数组=全部公布（向后兼容旧端点）。
     "ALTER TABLE endpoints ADD COLUMN active_models TEXT NOT NULL DEFAULT '[]';",
+    // v10：request_logs 记录错误响应体。仅错误请求写入，旧行/无响应体为 NULL。
+    "ALTER TABLE request_logs ADD COLUMN error_body TEXT;",
 ];
 
 /// 幂等执行迁移：读取 `schema_version` 当前版本，仅应用尚未执行的脚本。
@@ -267,5 +269,17 @@ mod tests {
             rows.filter_map(Result::ok).collect()
         };
         assert!(cols.contains(&"active_models".to_string()));
+    }
+
+    #[test]
+    fn v10_adds_error_body_column() {
+        let c = Connection::open_in_memory().unwrap();
+        run_migrations(&c).unwrap();
+        let cols: Vec<String> = {
+            let mut stmt = c.prepare("PRAGMA table_info(request_logs)").unwrap();
+            let rows = stmt.query_map([], |r| r.get::<_, String>(1)).unwrap();
+            rows.filter_map(Result::ok).collect()
+        };
+        assert!(cols.contains(&"error_body".to_string()));
     }
 }

@@ -68,6 +68,9 @@ fn parse_str(m: &BTreeMap<String, String>, key: &str, default: &str) -> String {
         .cloned()
         .unwrap_or_else(|| default.to_string())
 }
+fn parse_str_allow_empty(m: &BTreeMap<String, String>, key: &str, default: &str) -> String {
+    m.get(key).cloned().unwrap_or_else(|| default.to_string())
+}
 fn parse_i64(m: &BTreeMap<String, String>, key: &str, default: i64) -> i64 {
     m.get(key).and_then(|v| v.parse().ok()).unwrap_or(default)
 }
@@ -91,8 +94,8 @@ pub fn get_config(conn: &Connection) -> AppResult<AppConfig> {
         proxy_url: parse_str(&m, "proxyUrl", &d.proxy_url),
         proxy_enabled: parse_bool(&m, "proxyEnabled", d.proxy_enabled),
         proxy_for_update: parse_bool(&m, "proxyForUpdate", d.proxy_for_update),
-        openai_ua: parse_str(&m, "openaiUa", &d.openai_ua),
-        claude_cli_ua: parse_str(&m, "claudeCliUa", &d.claude_cli_ua),
+        openai_ua: parse_str_allow_empty(&m, "openaiUa", &d.openai_ua),
+        claude_cli_ua: parse_str_allow_empty(&m, "claudeCliUa", &d.claude_cli_ua),
         update: UpdateSettings {
             auto_check: parse_bool(&m, "update_autoCheck", true),
             check_interval: parse_i64(&m, "update_checkInterval", 24),
@@ -151,5 +154,18 @@ mod tests {
         // 真相源是 port 键
         set_value(&c, "port", "3002").unwrap();
         assert_eq!(get_config(&c).unwrap().port, 3002);
+    }
+
+    #[test]
+    fn openai_ua_defaults_to_codex_but_allows_empty_override() {
+        let c = db();
+        let cfg = get_config(&c).unwrap();
+        assert!(cfg.openai_ua.starts_with("codex_cli_rs/"));
+
+        set_value(&c, "openaiUa", "").unwrap();
+        assert_eq!(get_config(&c).unwrap().openai_ua, "");
+
+        set_value(&c, "openaiUa", "custom-agent").unwrap();
+        assert_eq!(get_config(&c).unwrap().openai_ua, "custom-agent");
     }
 }

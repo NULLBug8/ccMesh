@@ -67,7 +67,7 @@ pub enum Outcome {
 
 /// 客户端错误状态码（请求本身的问题，不应污染端点熔断）。
 fn is_client_error(status: u16) -> bool {
-    matches!(status, 400 | 401 | 403 | 405 | 406 | 413 | 414 | 415 | 422)
+    matches!(status, 400 | 401 | 405 | 406 | 413 | 414 | 415 | 422)
 }
 
 /// 按状态码归类熔断结果（200 视为成功由调用方单独处理；此处用于非 200 路径）。
@@ -148,6 +148,7 @@ mod tests {
         assert_eq!(categorize_status(401), Outcome::NonRetryable);
         assert_eq!(categorize_status(422), Outcome::NonRetryable);
         // 服务端/限流/网关错误 → 计入熔断
+        assert_eq!(categorize_status(403), Outcome::Retryable);
         assert_eq!(categorize_status(429), Outcome::Retryable);
         assert_eq!(categorize_status(500), Outcome::Retryable);
         assert_eq!(categorize_status(502), Outcome::Retryable);

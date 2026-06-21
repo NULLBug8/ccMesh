@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { fmtDateTime, fmtTime, RequestLogTable, TokenDetail } from "@/components/business/RequestMonitor";
+import { ErrorDetail, fmtDateTime, fmtTime, RequestLogTable, TokenDetail } from "@/components/business/RequestMonitor";
 import type { RequestLog } from "@/services/modules/stats";
 
 const log: RequestLog = {
@@ -22,6 +22,7 @@ const log: RequestLog = {
   durationMs: 120,
   firstByteMs: 80,
   actualModel: null,
+  errorBody: null,
 };
 
 describe("RequestLogTable", () => {
@@ -72,9 +73,33 @@ describe("RequestLogTable", () => {
     expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2);
   });
 
+  it("错误行有错误体时展示详情入口", () => {
+    const failed: RequestLog = {
+      ...log,
+      id: 4,
+      statusCode: 403,
+      isError: true,
+      errorBody: '{"error":{"code":"channel:client_restricted"}}',
+    };
+    render(<RequestLogTable items={[failed]} />);
+    expect(screen.getByRole("button", { name: "查看错误详情" })).toBeInTheDocument();
+  });
+
   it("空数据显示占位", () => {
     render(<RequestLogTable items={[]} />);
     expect(screen.getByText("暂无请求记录")).toBeInTheDocument();
+  });
+});
+
+describe("ErrorDetail", () => {
+  it("格式化 JSON 错误体", () => {
+    render(<ErrorDetail errorBody='{"error":{"code":"channel:client_restricted"}}' />);
+    expect(screen.getByText(/"code": "channel:client_restricted"/)).toBeInTheDocument();
+  });
+
+  it("非 JSON 错误体显示原文", () => {
+    render(<ErrorDetail errorBody="upstream forbidden" />);
+    expect(screen.getByText("upstream forbidden")).toBeInTheDocument();
   });
 });
 
