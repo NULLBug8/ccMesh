@@ -406,6 +406,45 @@ pub async fn handle_proxy(
 
         (cands, gate)
     };
+    // 熔断后二次模型过滤：当熔断器保留了兜底候选（全 Open）时，再次按模型支持性过滤，避免误伤不支持该模型的端点。
+    // 此过滤仅在「模型过滤阶段已回退全量」时生效（即 enabled 经过模型过滤后未减少，说明无端点声明该模型）。
+    let enabled: Vec<Endpoint> = if !use_specific && model.is_some() {
+        let before_count = enabled.len();
+        let model_filtered: Vec<Endpoint> = enabled
+            .into_iter()
+            .filter(|ep| {
+                let advertised = resolver::advertised_models(ep);
+                if advertised.is_empty() {
+                    // 端点未公布任何模型（旧端点向后兼容）→ 保留
+                    true
+                } else {
+                    // 端点公布了模型 → 仅当声明了请求模型时保留
+                    advertised.iter().any(|am| {
+                        am.trim().eq_ignore_ascii_case(model.as_deref().unwrap().trim())
+                    })
+                }
+            })
+            .collect();
+        let after_count = model_filtered.len();
+        if after_count < before_count {
+            let filtered_names: Vec<String> = enabled_before_breaker
+                .iter()
+                .filter(|e| !model_filtered.iter().any(|f| f.name == e.name))
+                .map(|e| e.name.clone())
+                .collect();
+            tracing::info!(
+                model = model.as_deref().unwrap_or("-"),
+                before = before_count,
+                after = after_count,
+                filtered_out = before_count - after_count,
+                filtered_endpoints = ?filtered_names,
+                "熔断后二次模型过滤完成（剔除不支持该模型的兜底端点）"
+            );
+        }
+        model_filtered
+    } else {
+        enabled
+    };
     let n = enabled.len();
     if n == 0 {
         return json_error(
