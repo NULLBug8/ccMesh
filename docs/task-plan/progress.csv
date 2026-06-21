@@ -69,9 +69,9 @@
 执行,启动行为与点亮收尾,2032.9,校验收尾:gateway/v1+新建配置端口/点亮下拉+整体回归,全栈,2032.1;2032.2;2032.3;2032.4;2032.5;2032.6;2032.7;2032.8,4;5,完成,claude,2026-06-17,2026-06-17,
 执行,端点筛选与表单文案,2033.1,FilterBar补codex类型+EndpointForm点亮提示改图标tooltip+删两处括号文案,前端,,,完成,claude,2026-06-17,2026-06-17,lite
 执行,模型去重与删除弹窗,2034.1,/v1/models跨端点去重(大小写不敏)+resolver单测+删除渠道弹窗文案优化,全栈,,,完成,claude,2026-06-17,2026-06-17,lite
-执行,Linux交互冻结修复,2035.1,main.rs设置WebKit环境变量(DMABUF/COMPOSITING),desktop,,1,完成,claude,2026-06-21,2026-06-21,
-执行,Linux交互冻结修复,2035.2,新增linux_fix.rs:移植nudge_main_window并泛型化,desktop,,1,完成,claude,2026-06-21,2026-06-21,
-执行,Linux交互冻结修复,2035.3,lib.rs接线:声明模块+单例回调nudge+注册命令,desktop,2035.2,1,完成,claude,2026-06-21,2026-06-21,
+,,2035.1,后端active_models自动补齐,backend,,endpoint_repo.update自动补齐,完成,claude,2026-06-21,2026-06-21,
+,,2035.2,select_candidates移除兜底+forward守卫,backend,,熔断选路不再级联,完成,claude,2026-06-21,2026-06-21,
+,,2035.3,前端refresh自动同步activeModels,frontend,,刷新模型时自动点亮,完成,claude,2026-06-21,2026-06-21,
 执行,Linux交互冻结修复,2035.4,tray.rs show_main接线nudge,desktop,2035.2,1,完成,claude,2026-06-21,2026-06-21,
 执行,Linux交互冻结修复,2035.5,commands/window.rs新增notify_window_shown命令,desktop,2035.2,1,完成,claude,2026-06-21,2026-06-21,
 执行,Linux交互冻结修复,2035.6,boot.ts首屏show后invoke触发nudge,前端,2035.5,1,完成,claude,2026-06-21,2026-06-21,
