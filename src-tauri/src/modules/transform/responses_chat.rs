@@ -182,7 +182,10 @@ fn convert_input_items(items: &[Value], system_texts: &mut Vec<String>, messages
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
                 let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                let args = item.get("arguments").and_then(|v| v.as_str()).unwrap_or("{}");
+                let args = item
+                    .get("arguments")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("{}");
                 if !call_id.is_empty() && !name.is_empty() {
                     pending_calls.push(json!({
                         "id": call_id,
@@ -493,7 +496,11 @@ impl ResponsesStreamConverter {
             "model": self.model,
             "output": []
         });
-        self.push_event(events, "response.created", json!({ "response": snap.clone() }));
+        self.push_event(
+            events,
+            "response.created",
+            json!({ "response": snap.clone() }),
+        );
         self.push_event(events, "response.in_progress", json!({ "response": snap }));
     }
 
@@ -574,7 +581,10 @@ impl ResponsesStreamConverter {
         let index = tc.get("index").and_then(|v| v.as_i64()).unwrap_or(0);
         let func = tc.get("function");
         let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("");
-        let has_name = func.and_then(|f| f.get("name")).and_then(|v| v.as_str()).is_some();
+        let has_name = func
+            .and_then(|f| f.get("name"))
+            .and_then(|v| v.as_str())
+            .is_some();
 
         // 首见该 index（带 id 或 name）→ 关文本、开新 function_call item
         if !self.tools.contains_key(&index) && (!id.is_empty() || has_name) {
@@ -916,7 +926,10 @@ mod tests {
         assert_eq!(m["content"], Value::Null);
         assert_eq!(m["tool_calls"][0]["id"], json!("c1"));
         assert_eq!(m["tool_calls"][0]["function"]["name"], json!("f"));
-        assert_eq!(m["tool_calls"][0]["function"]["arguments"], json!("{\"a\":1}"));
+        assert_eq!(
+            m["tool_calls"][0]["function"]["arguments"],
+            json!("{\"a\":1}")
+        );
     }
 
     #[test]
@@ -948,7 +961,10 @@ mod tests {
         assert!(content.is_array());
         assert_eq!(content[0]["type"], json!("text"));
         assert_eq!(content[1]["type"], json!("image_url"));
-        assert_eq!(content[1]["image_url"]["url"], json!("data:image/png;base64,AAA"));
+        assert_eq!(
+            content[1]["image_url"]["url"],
+            json!("data:image/png;base64,AAA")
+        );
     }
 
     // ---- 响应转换（非流式）----
@@ -1008,7 +1024,10 @@ mod tests {
             }
         });
         let out = chat_response_to_responses(&chat, "m");
-        assert_eq!(out["usage"]["input_tokens_details"]["cached_tokens"], json!(30));
+        assert_eq!(
+            out["usage"]["input_tokens_details"]["cached_tokens"],
+            json!(30)
+        );
     }
 
     // ---- 流式转换 ----

@@ -101,8 +101,14 @@ mod tests {
 
     #[test]
     fn default_model_per_format() {
-        assert_eq!(UpstreamFormat::Claude.default_model(), "claude-3-5-sonnet-latest");
+        assert_eq!(
+            UpstreamFormat::Claude.default_model(),
+            "claude-3-5-sonnet-latest"
+        );
         assert_eq!(UpstreamFormat::OpenAiChat.default_model(), "gpt-4o-mini");
-        assert_eq!(UpstreamFormat::OpenAiResponses.default_model(), "gpt-5-codex");
+        assert_eq!(
+            UpstreamFormat::OpenAiResponses.default_model(),
+            "gpt-5-codex"
+        );
     }
 }

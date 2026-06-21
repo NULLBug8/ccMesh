@@ -244,9 +244,9 @@ pub fn apply_config(app: &AppHandle, tool: Tool, snapshot: Value) -> AppResult<(
                 .to_string();
             // 写入前校验 TOML 合法性
             if !config_toml.trim().is_empty() {
-                config_toml.parse::<toml::Table>().map_err(|e| {
-                    AppError::InvalidArgument(format!("config.toml 语法无效: {e}"))
-                })?;
+                config_toml
+                    .parse::<toml::Table>()
+                    .map_err(|e| AppError::InvalidArgument(format!("config.toml 语法无效: {e}")))?;
             }
             let auth_target = paths::codex_auth_path()
                 .ok_or_else(|| AppError::Config("无法定位 ~/.codex".into()))?;

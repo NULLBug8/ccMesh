@@ -326,7 +326,10 @@ mod tests {
         // 点亮 a、b，以及一个不在 models 中的 z（应被剔除）
         r.active_models = vec!["a".into(), "b".into(), "z".into()];
         let created = create(&c, &r).unwrap();
-        assert_eq!(created.active_models, vec!["a".to_string(), "b".to_string()]);
+        assert_eq!(
+            created.active_models,
+            vec!["a".to_string(), "b".to_string()]
+        );
 
         // 旧端点（未传 active）默认空 = 全量公布
         let bare = create(&c, &req("bare")).unwrap();
@@ -422,8 +425,14 @@ mod tests {
             created.id,
             &UpdateEndpointRequest {
                 model_mappings: Some(vec![
-                    ModelMapping { from: "a".into(), to: "claude-opus-4-8".into() },
-                    ModelMapping { from: "b".into(), to: "claude-opus-4-8".into() },
+                    ModelMapping {
+                        from: "a".into(),
+                        to: "claude-opus-4-8".into(),
+                    },
+                    ModelMapping {
+                        from: "b".into(),
+                        to: "claude-opus-4-8".into(),
+                    },
                 ]),
                 ..Default::default()
             },

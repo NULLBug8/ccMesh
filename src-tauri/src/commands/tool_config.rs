@@ -16,11 +16,7 @@ pub fn list_profile_channels(app: AppHandle, app_type: String) -> AppResult<Vec<
 }
 
 #[tauri::command]
-pub fn get_profile_channel(
-    app: AppHandle,
-    app_type: String,
-    id: String,
-) -> AppResult<ChannelData> {
+pub fn get_profile_channel(app: AppHandle, app_type: String, id: String) -> AppResult<ChannelData> {
     tc::get_channel(&app, Tool::from_str(&app_type)?, &id)
 }
 
@@ -44,11 +40,7 @@ pub fn extract_source_record(app: AppHandle, app_type: String) -> AppResult<Extr
 }
 
 #[tauri::command]
-pub fn apply_profile_config(
-    app: AppHandle,
-    app_type: String,
-    snapshot: Value,
-) -> AppResult<()> {
+pub fn apply_profile_config(app: AppHandle, app_type: String, snapshot: Value) -> AppResult<()> {
     tc::apply_config(&app, Tool::from_str(&app_type)?, snapshot)
 }
 
@@ -72,9 +64,6 @@ pub fn preview_codex_config(
 }
 
 #[tauri::command]
-pub fn parse_codex_fields(
-    auth: Value,
-    config_toml: String,
-) -> AppResult<CodexOperationFields> {
+pub fn parse_codex_fields(auth: Value, config_toml: String) -> AppResult<CodexOperationFields> {
     Ok(tc::codex::parse_operation_fields(&auth, &config_toml))
 }

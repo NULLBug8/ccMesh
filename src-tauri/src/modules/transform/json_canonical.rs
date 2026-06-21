@@ -27,8 +27,9 @@ pub fn canonical_json_string(value: &Value) -> String {
             let parts = entries
                 .into_iter()
                 .map(|(key, value)| {
-                    let key = serde_json::to_string(key)
-                        .expect("serializing a JSON object key for canonical output should not fail");
+                    let key = serde_json::to_string(key).expect(
+                        "serializing a JSON object key for canonical output should not fail",
+                    );
                     format!("{key}:{}", canonical_json_string(value))
                 })
                 .collect::<Vec<_>>();
@@ -47,7 +48,10 @@ mod tests {
         let left = json!({ "b": 2, "a": { "d": true, "c": [3, {"z": 1, "y": 2}] } });
         let right = json!({ "a": { "c": [3, {"y": 2, "z": 1}], "d": true }, "b": 2 });
         assert_eq!(canonical_json_string(&left), canonical_json_string(&right));
-        assert_eq!(canonical_json_string(&left), r#"{"a":{"c":[3,{"y":2,"z":1}],"d":true},"b":2}"#);
+        assert_eq!(
+            canonical_json_string(&left),
+            r#"{"a":{"c":[3,{"y":2,"z":1}],"d":true},"b":2}"#
+        );
     }
 
     #[test]

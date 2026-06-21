@@ -200,7 +200,10 @@ mod tests {
             build_candidate_urls("http://127.0.0.1:3000/v1/"),
             vec!["http://127.0.0.1:3000/v1/models"]
         );
-        assert_eq!(models_url_from_base("https://x.com/V1"), "https://x.com/V1/models");
+        assert_eq!(
+            models_url_from_base("https://x.com/V1"),
+            "https://x.com/V1/models"
+        );
     }
 
     #[test]

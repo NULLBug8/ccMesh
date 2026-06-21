@@ -559,7 +559,10 @@ mod tests {
         });
         let out = claude_request_to_openai(&claude, None);
         assert_eq!(out["messages"][0]["content"], json!("S"));
-        assert_eq!(out["messages"][0]["cache_control"]["type"], json!("ephemeral"));
+        assert_eq!(
+            out["messages"][0]["cache_control"]["type"],
+            json!("ephemeral")
+        );
     }
 
     #[test]

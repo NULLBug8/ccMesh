@@ -1,6 +1,8 @@
 use serde_json::{json, Value};
 
-use crate::modules::transform::types::{build_claude_event, map_finish_reason, StreamContext, ToolBlock};
+use crate::modules::transform::types::{
+    build_claude_event, map_finish_reason, StreamContext, ToolBlock,
+};
 
 /// 有状态的流式转换器：逐个消费 OpenAI Chat 流 chunk，产出 Claude SSE 事件文本。
 ///

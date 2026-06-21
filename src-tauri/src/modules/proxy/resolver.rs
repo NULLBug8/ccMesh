@@ -345,7 +345,9 @@ mod tests {
         let adv = advertised_models(&e);
         // 大小写去重：claude-opus-4-8 与 gpt-5 各保留一次
         assert_eq!(adv.len(), 2);
-        assert!(adv.iter().any(|m| m.eq_ignore_ascii_case("claude-opus-4-8")));
+        assert!(adv
+            .iter()
+            .any(|m| m.eq_ignore_ascii_case("claude-opus-4-8")));
         assert!(adv.iter().any(|m| m.eq_ignore_ascii_case("gpt-5")));
     }
 
@@ -427,10 +429,22 @@ mod tests {
         // 未命中映射且无锁定 → 透传（None）
         assert_eq!(resolve_outbound(&mapped, Some("claude-opus-4-8")), None);
         // 锁定 model 优先于透传
-        let locked = Endpoint { model: "lk".into(), ..ep("e2") };
-        assert_eq!(resolve_outbound(&locked, Some("anything")).as_deref(), Some("lk"));
+        let locked = Endpoint {
+            model: "lk".into(),
+            ..ep("e2")
+        };
+        assert_eq!(
+            resolve_outbound(&locked, Some("anything")).as_deref(),
+            Some("lk")
+        );
         // 映射优先于锁定
-        let both = Endpoint { model: "lk".into(), ..ep_mapped("e3", &[], &[("a", "mapped-to")]) };
-        assert_eq!(resolve_outbound(&both, Some("a")).as_deref(), Some("mapped-to"));
+        let both = Endpoint {
+            model: "lk".into(),
+            ..ep_mapped("e3", &[], &[("a", "mapped-to")])
+        };
+        assert_eq!(
+            resolve_outbound(&both, Some("a")).as_deref(),
+            Some("mapped-to")
+        );
     }
 }

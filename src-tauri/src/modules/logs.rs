@@ -67,8 +67,20 @@ pub fn level_from_str(s: &str) -> u8 {
 fn is_noisy_target(target: &str) -> bool {
     target == "log"
         || [
-            "tao", "wry", "webview2", "tauri", "hyper", "h2", "reqwest", "rustls", "tokio",
-            "tower", "mio", "want", "tungstenite", "soketto",
+            "tao",
+            "wry",
+            "webview2",
+            "tauri",
+            "hyper",
+            "h2",
+            "reqwest",
+            "rustls",
+            "tokio",
+            "tower",
+            "mio",
+            "want",
+            "tungstenite",
+            "soketto",
         ]
         .iter()
         .any(|p| target.starts_with(p))

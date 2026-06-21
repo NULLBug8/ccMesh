@@ -126,7 +126,11 @@ mod tests {
         };
         let merged = merge_operation_fields(&base, &f);
         assert_eq!(
-            merged.get("env").unwrap().get("ANTHROPIC_BASE_URL").unwrap(),
+            merged
+                .get("env")
+                .unwrap()
+                .get("ANTHROPIC_BASE_URL")
+                .unwrap(),
             "https://x"
         );
         assert_eq!(merged.get("other").unwrap(), 1);
