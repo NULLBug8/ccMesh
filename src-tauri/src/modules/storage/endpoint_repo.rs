@@ -166,11 +166,6 @@ pub fn update(conn: &Connection, id: i64, req: &UpdateEndpointRequest) -> AppRes
     if let Some(ref v) = req.remark {
         e.remark = v.clone();
     }
-    // 自动补齐：active_models 为空但 models 非空时，视为"全部点亮"并写入，
-    // 防止旧端点回退到过期 models 清单导致路由误伤不支持该模型的端点。
-    if e.active_models.is_empty() && !e.models.is_empty() {
-        e.active_models = e.models.clone();
-    }
     // models 或 active_models 任一变更后，重新规整点亮子集为 models 的子集。
     e.active_models = sanitize_active(&e.models, &e.active_models);
 
@@ -365,16 +360,16 @@ mod tests {
     }
 
     #[test]
-    fn update_auto_populates_active_models_when_empty() {
+    fn update_preserves_empty_active_models() {
         let c = db();
-        // 创建旧式端点：models 非空但 active_models 为空
+        // 创建端点：models 非空但 active_models 为空（默认全部公布）
         let mut r = req("old");
         r.models = vec!["gpt-4o".into(), "gpt-5.5".into()];
         r.active_models = Vec::new();
         let created = create(&c, &r).unwrap();
         assert!(created.active_models.is_empty()); // 创建时为空
 
-        // 任一字段变更 → 自动补齐 active_models = models
+        // 任一字段变更 → active_models 应保持为空（不自动补齐）
         update(
             &c,
             created.id,
@@ -385,9 +380,9 @@ mod tests {
         )
         .unwrap();
         let got = get_by_id(&c, created.id).unwrap().unwrap();
-        assert_eq!(got.active_models, vec!["gpt-4o".to_string(), "gpt-5.5".to_string()]);
+        assert!(got.active_models.is_empty()); // 保持为空
 
-        // models 为空时不应自动补齐
+        // models 为空时也应保持 active_models 为空
         let bare = create(&c, &req("bare")).unwrap();
         update(
             &c,
