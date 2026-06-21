@@ -321,22 +321,18 @@ impl BreakerRegistry {
     }
 }
 
-/// 选路候选：过滤掉未到期的 Open 端点；全部 Open 时兜底放行完整列表（避免 100% 拒绝）。
+/// 选路候选：过滤掉未到期的 Open 端点。全 Open 时返回空（调用方应返回 502），
+/// 不再兜底放行完整列表——模型过滤后的候选若被级联扩大，会误伤不支持该模型的端点。
 pub fn select_candidates(
     enabled: &[Endpoint],
     registry: &BreakerRegistry,
     now: Instant,
 ) -> Vec<Endpoint> {
-    let avail: Vec<Endpoint> = enabled
+    enabled
         .iter()
         .filter(|e| registry.is_available(&e.name, now))
         .cloned()
-        .collect();
-    if avail.is_empty() {
-        enabled.to_vec()
-    } else {
-        avail
-    }
+        .collect()
 }
 
 #[cfg(test)]
@@ -452,7 +448,7 @@ mod tests {
     }
 
     #[test]
-    fn select_candidates_skips_open_and_falls_back_when_all_open() {
+    fn select_candidates_skips_open_returns_empty_when_all_open() {
         let reg = BreakerRegistry::new(cfg());
         let now = Instant::now();
         let eps = vec![ep("a"), ep("b")];
@@ -464,11 +460,11 @@ mod tests {
         assert_eq!(c.len(), 1);
         assert_eq!(c[0].name, "b");
 
-        // b 也熔断 → 全 Open → 兜底放行完整列表
+        // b 也熔断 → 全 Open → 返回空（不再兜底放行）
         for _ in 0..3 {
             reg.record_failure("b", false, now, "boom");
         }
         let c2 = select_candidates(&eps, &reg, now);
-        assert_eq!(c2.len(), 2);
+        assert!(c2.is_empty());
     }
 }

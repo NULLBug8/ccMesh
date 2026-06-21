@@ -318,7 +318,7 @@ pub async fn handle_proxy(
     } else {
         resolver::filter_by_model(&enabled, model.as_deref())
     };
-    // 熔断选路：非显式端点时过滤掉未到期的 Open 端点（全 Open 则兜底放行完整列表）。
+    // 熔断选路：非显式端点时过滤掉未到期的 Open 端点（全 Open 则返回空，由上方守卫返回 502）。
     // 显式指定端点绕过熔断（用户意图优先），但结果仍计入熔断。
     let (enabled, gate): (Vec<Endpoint>, bool) = if use_specific {
         (enabled, false)
@@ -330,6 +330,12 @@ pub async fn handle_proxy(
         (cands, gate)
     };
     let n = enabled.len();
+    if n == 0 {
+        return json_error(
+            StatusCode::BAD_GATEWAY,
+            "所有候选端点均熔断或无可用端点",
+        );
+    }
     let max = if use_specific {
         3
     } else {
