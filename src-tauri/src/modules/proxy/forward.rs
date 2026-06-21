@@ -345,6 +345,8 @@ pub async fn handle_proxy(
     let mut attempts_on_current = 0u32;
     let mut last_err = String::new();
     let mut last_endpoint = String::new();
+    // 最后一次实际尝试的出站路径：全部失败兜底记录时填入，避免前端按入站格式误推断。
+    let mut last_upstream_path = String::new();
     // thinking 签名整流一次性标志：命中后清洗重试，仅一次，防死循环。
     let mut sig_rectified = false;
 
@@ -429,6 +431,7 @@ pub async fn handle_proxy(
         } else {
             path.as_str()
         };
+        last_upstream_path = upstream_path.to_string();
         let route_mode = if responses_to_chat {
             "responses->chat"
         } else if needs_transform {
@@ -622,10 +625,10 @@ pub async fn handle_proxy(
         st.stats.record(RequestRecord {
             endpoint_name: last_endpoint.clone(),
             model: model.clone(),
-            inbound_format: (if inbound_openai { "openai" } else { "claude" }).to_string(),
+            inbound_format: inbound_label.to_string(),
             upstream_url: String::new(),
             inbound_path: path.clone(),
-            upstream_path: String::new(),
+            upstream_path: last_upstream_path.clone(),
             status_code: None,
             is_error: true,
             usage: usage::TokenUsage::default(),

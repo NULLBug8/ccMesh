@@ -191,6 +191,7 @@ function statusDot(code: number | null): "success" | "warning" | "danger" {
 /** 旧行无真实路径时，按入站协议推断兜底路由。 */
 function inferPath(format: string): string {
   if (format === "openai") return "/v1/chat/completions";
+  if (format === "responses") return "/v1/responses";
   if (format === "claude") return "/v1/messages";
   return "—";
 }
