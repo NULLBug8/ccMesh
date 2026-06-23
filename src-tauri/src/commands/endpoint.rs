@@ -47,9 +47,11 @@ pub fn delete_endpoint(state: State<AppState>, id: i64) -> AppResult<()> {
 }
 
 #[tauri::command]
-pub fn reorder_endpoints(state: State<AppState>, ordered_ids: Vec<i64>) -> AppResult<()> {
+pub fn reorder_endpoints(app: AppHandle, state: State<AppState>, ordered_ids: Vec<i64>) -> AppResult<()> {
     let mut conn = state.db_pool.get()?;
-    endpoint_repo::reorder(&mut conn, &ordered_ids)
+    endpoint_repo::reorder(&mut conn, &ordered_ids)?;
+    let _ = app.emit(ENDPOINTS_CHANGED_EVENT, ());
+    Ok(())
 }
 
 /// 克隆端点：名称自动加 `(副本)` 后缀并避免冲突。
