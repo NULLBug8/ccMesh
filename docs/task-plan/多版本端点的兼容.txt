@@ -1,4 +1,0 @@
-智普模型端点，v4版本结尾
-https://open.bigmodel.cn/api/coding/paas/v4
-
-添加一种以#结尾的模型，避免拼接问题
