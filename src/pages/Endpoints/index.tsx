@@ -1,23 +1,27 @@
 import { useMemo, useState } from "react";
 
+import { PageLayoutEditor } from "@/components/business/page-layout/PageLayoutEditor";
+import { PageSectionHost } from "@/components/business/page-layout/PageSectionHost";
 import { useEndpoints } from "@/hooks/useEndpoints";
 import { useEndpointHealthEvents } from "@/hooks/useEndpointHealth";
 import type { Endpoint } from "@/services/modules/endpoint";
-import { useFilterStore, useLayoutStore } from "@/stores";
+import { resolveViewLayout, useFilterStore, useLayoutStore, usePageLayoutStore } from "@/stores";
 import { DnDList } from "./_components/DnDList";
 import { EndpointForm } from "./_components/EndpointForm";
 import { FilterBar } from "./_components/FilterBar";
 import { ModelList } from "./_components/ModelList";
+import { endpointsLayoutDefinition } from "./layout";
 
 export function Endpoints() {
   const { data: endpoints, isLoading } = useEndpoints();
-  const search = useFilterStore((s) => s.search);
-  const enabledOnly = useFilterStore((s) => s.enabledOnly);
-  const transformer = useFilterStore((s) => s.transformer);
-  const isActive = useFilterStore((s) => s.isActive);
-  const view = useLayoutStore((s) => s.endpointView);
+  const search = useFilterStore((state) => state.search);
+  const enabledOnly = useFilterStore((state) => state.enabledOnly);
+  const transformer = useFilterStore((state) => state.transformer);
+  const isActive = useFilterStore((state) => state.isActive);
+  const view = useLayoutStore((state) => state.endpointView);
+  const savedLayout = usePageLayoutStore((state) => state.getLayout("endpoints"));
+  const layout = resolveViewLayout(endpointsLayoutDefinition, savedLayout);
 
-  // 熔断/端点变更事件 → 刷新各卡片的实时健康态与列表（共享 hook 统一订阅）。
   useEndpointHealthEvents();
 
   const [formOpen, setFormOpen] = useState(false);
@@ -26,14 +30,14 @@ export function Endpoints() {
   const filtered = useMemo(
     () =>
       (endpoints ?? []).filter(
-        (e) =>
-          (!enabledOnly || e.enabled) &&
-          (transformer === "all" || e.transformer === transformer) &&
+        (endpoint) =>
+          (!enabledOnly || endpoint.enabled) &&
+          (transformer === "all" || endpoint.transformer === transformer) &&
           (search === "" ||
-            e.name.toLowerCase().includes(search.toLowerCase()) ||
-            e.apiUrl.toLowerCase().includes(search.toLowerCase())),
+            endpoint.name.toLowerCase().includes(search.toLowerCase()) ||
+            endpoint.apiUrl.toLowerCase().includes(search.toLowerCase())),
       ),
-    [endpoints, search, enabledOnly, transformer],
+    [enabledOnly, endpoints, search, transformer],
   );
 
   const dragEnabled = !isActive();
@@ -42,34 +46,58 @@ export function Endpoints() {
     setEditing(null);
     setFormOpen(true);
   };
-  const openEdit = (e: Endpoint) => {
-    setEditing(e);
+
+  const openEdit = (endpoint: Endpoint) => {
+    setEditing(endpoint);
     setFormOpen(true);
   };
 
   return (
     <div className="mx-auto flex h-full max-w-4xl flex-col gap-5">
-      {/* 固定头部：标题 + 筛选栏（不随下方区域滚动） */}
-      <div className="flex shrink-0 flex-col gap-5">
-        <h1 className="text-2xl font-light tracking-tight">端点管理</h1>
-        <FilterBar onCreate={openCreate} />
-      </div>
-
-      {/* 上区（端点列表）：占剩余视口高度 60%，超出内部滚动 */}
-      <div className="min-h-0 flex-[3] overflow-y-auto pr-1">
-        {isLoading ? (
-          <p className="text-sm text-ink-mute">加载中…</p>
-        ) : filtered.length === 0 ? (
-          <p className="text-sm text-ink-mute">暂无端点，点击「新建端点」添加。</p>
-        ) : (
-          <DnDList endpoints={filtered} draggable={dragEnabled} view={view} onEdit={openEdit} />
-        )}
-      </div>
-
-      {/* 下区（可用模型）：占剩余视口高度 40%，标题固定、仅模型内容内部滚动 */}
-      <div className="flex min-h-0 flex-[2] flex-col">
-        <ModelList />
-      </div>
+      <PageLayoutEditor view="endpoints" definition={endpointsLayoutDefinition} />
+      <PageSectionHost
+        layout={layout}
+        registry={{
+          header: {
+            title: "标题与筛选",
+            render: () => (
+              <div className="flex shrink-0 flex-col gap-5">
+                <h1 className="text-2xl font-light tracking-tight">端点管理</h1>
+                <FilterBar onCreate={openCreate} />
+              </div>
+            ),
+          },
+          endpoints: {
+            title: "端点列表",
+            className: "min-h-0 xl:col-span-7",
+            render: () => (
+              <div className="min-h-0 overflow-y-auto pr-1">
+                {isLoading ? (
+                  <p className="text-sm text-ink-mute">加载中...</p>
+                ) : filtered.length === 0 ? (
+                  <p className="text-sm text-ink-mute">暂无端点，点击“新建端点”添加。</p>
+                ) : (
+                  <DnDList
+                    endpoints={filtered}
+                    draggable={dragEnabled}
+                    view={view}
+                    onEdit={openEdit}
+                  />
+                )}
+              </div>
+            ),
+          },
+          models: {
+            title: "可用模型",
+            className: "min-h-0 xl:col-span-5",
+            render: () => (
+              <div className="flex min-h-0 flex-col">
+                <ModelList />
+              </div>
+            ),
+          },
+        }}
+      />
 
       <EndpointForm open={formOpen} onOpenChange={setFormOpen} editing={editing} />
     </div>

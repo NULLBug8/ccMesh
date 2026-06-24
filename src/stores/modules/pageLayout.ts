@@ -1,19 +1,11 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+import {
+  type PageLayoutConfig,
+  type PageLayoutDefinition,
+} from "@/components/business/page-layout/pageLayoutTypes";
 import type { ViewId } from "./layout";
-
-export type PageLayoutMode = "stack" | "two-column" | "split";
-
-export interface PageSectionState {
-  id: string;
-  visible: boolean;
-}
-
-export interface PageLayoutConfig {
-  mode: PageLayoutMode;
-  sections: PageSectionState[];
-}
 
 interface PageLayoutState {
   editModeByView: Partial<Record<ViewId, boolean>>;
@@ -77,3 +69,28 @@ export const usePageLayoutStore = create<PageLayoutState>()(
     },
   ),
 );
+
+export function resolveViewLayout(
+  definition: PageLayoutDefinition,
+  saved?: PageLayoutConfig,
+): PageLayoutConfig {
+  const definitionById = new Map(definition.sections.map((section) => [section.id, section]));
+  const savedSections = saved?.sections ?? [];
+  const orderedSaved = savedSections
+    .filter((section) => definitionById.has(section.id))
+    .map((section) => ({
+      id: section.id,
+      visible: section.visible,
+    }));
+  const missingSections = definition.sections
+    .filter((section) => !orderedSaved.some((savedSection) => savedSection.id === section.id))
+    .map((section) => ({
+      id: section.id,
+      visible: section.defaultVisible ?? true,
+    }));
+
+  return {
+    mode: saved?.mode ?? definition.defaultMode,
+    sections: [...orderedSaved, ...missingSections],
+  };
+}
