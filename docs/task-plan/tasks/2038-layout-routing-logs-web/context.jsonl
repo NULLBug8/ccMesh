@@ -1,0 +1,3 @@
+{"path":"docs/task-plan/workflow.md","reason":"Follow the repository's required planning, progress tracking, and scoped commit workflow for task artifacts."}
+{"path":"docs/task-plan/tasks/2038-layout-routing-logs-web/task.md","reason":"Use the task metadata and current planning status as the execution envelope for implementation work."}
+{"path":"docs/task-plan/tasks/2038-layout-routing-logs-web/prd.md","reason":"Treat this PRD as the authoritative scope, phased rollout order, and acceptance criteria for task 2038."}
