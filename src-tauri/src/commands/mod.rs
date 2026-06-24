@@ -5,6 +5,7 @@ pub mod health;
 pub mod logs;
 pub mod models;
 pub mod proxy;
+pub mod rules;
 pub mod stats;
 pub mod tokens;
 pub mod tool_config;

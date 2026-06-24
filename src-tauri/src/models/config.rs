@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::models::rules::RulesConfig;
 use crate::utils::ua;
 
 /// 自动更新设置。
@@ -63,6 +64,7 @@ pub struct AppConfig {
     pub claude_cli_ua: String,
     pub update: UpdateSettings,
     pub webdav: WebDavConfig,
+    pub rules: RulesConfig,
 }
 
 impl Default for AppConfig {
@@ -86,6 +88,7 @@ impl Default for AppConfig {
             claude_cli_ua: ua::CLAUDE_PROBE_UA.into(),
             update: UpdateSettings::default(),
             webdav: WebDavConfig::default(),
+            rules: RulesConfig::default(),
         }
     }
 }

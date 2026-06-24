@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 
 use crate::models::endpoint::Endpoint;
+use crate::models::rules::CircuitBreakerRules;
 
 /// 熔断器配置（默认值参考 cc-switch）。结构预留运行时热更新，本期固定常量。
 #[derive(Debug, Clone, Copy)]
@@ -323,6 +324,12 @@ impl BreakerRegistry {
 
 /// 选路候选：过滤掉未到期的 Open 端点。全 Open 时返回空（调用方应返回 502），
 /// 不再兜底放行完整列表——模型过滤后的候选若被级联扩大，会误伤不支持该模型的端点。
+impl BreakerRegistry {
+    pub fn config(&self) -> CircuitBreakerConfig {
+        self.config
+    }
+}
+
 pub fn select_candidates(
     enabled: &[Endpoint],
     registry: &BreakerRegistry,
@@ -466,5 +473,34 @@ mod tests {
         }
         let c2 = select_candidates(&eps, &reg, now);
         assert!(c2.is_empty());
+    }
+
+    #[test]
+    fn registry_uses_injected_config() {
+        let reg = BreakerRegistry::new(CircuitBreakerConfig {
+            failure_threshold: 5,
+            success_threshold: 3,
+            timeout: Duration::from_secs(45),
+            error_rate_threshold: 0.75,
+            min_requests: 12,
+        });
+
+        assert_eq!(reg.config().failure_threshold, 5);
+        assert_eq!(reg.config().success_threshold, 3);
+        assert_eq!(reg.config().timeout, Duration::from_secs(45));
+        assert_eq!(reg.config().error_rate_threshold, 0.75);
+        assert_eq!(reg.config().min_requests, 12);
+    }
+}
+
+impl CircuitBreakerConfig {
+    pub fn from_rules(rules: &CircuitBreakerRules) -> Self {
+        Self {
+            failure_threshold: rules.failure_threshold,
+            success_threshold: rules.success_threshold,
+            timeout: Duration::from_secs(rules.timeout_seconds),
+            error_rate_threshold: rules.error_rate_threshold,
+            min_requests: rules.min_requests,
+        }
     }
 }

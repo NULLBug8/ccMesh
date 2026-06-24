@@ -4,6 +4,7 @@ pub mod backup;
 pub mod config;
 pub mod endpoint;
 pub mod proxy;
+pub mod rules;
 pub mod stats;
 pub mod tool_config;
 pub mod usage;

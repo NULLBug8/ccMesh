@@ -1,9 +1,11 @@
 use std::collections::BTreeMap;
 
 use rusqlite::{params, Connection, OptionalExtension};
+use serde::de::DeserializeOwned;
 
 use crate::error::AppResult;
 use crate::models::config::{AppConfig, UpdateSettings, WebDavConfig};
+use crate::models::rules::RulesConfig;
 
 /// 可跨设备同步的安全配置键白名单（剔除设备/路径特定项，见 P5-4）。
 pub const SAFE_CONFIG_KEYS: &[&str] = &[
@@ -27,6 +29,7 @@ pub const SAFE_CONFIG_KEYS: &[&str] = &[
     "update_checkInterval",
     "openaiUa",
     "claudeCliUa",
+    "rulesConfig",
 ];
 
 pub fn get_value(conn: &Connection, key: &str) -> AppResult<Option<String>> {
@@ -75,6 +78,12 @@ fn parse_i64(m: &BTreeMap<String, String>, key: &str, default: i64) -> i64 {
     m.get(key).and_then(|v| v.parse().ok()).unwrap_or(default)
 }
 
+fn parse_json<T: DeserializeOwned + Default>(m: &BTreeMap<String, String>, key: &str) -> T {
+    m.get(key)
+        .and_then(|value| serde_json::from_str::<T>(value).ok())
+        .unwrap_or_default()
+}
+
 /// 组装强类型 `AppConfig`（缺省回落默认值）。
 pub fn get_config(conn: &Connection) -> AppResult<AppConfig> {
     let m = get_all(conn)?;
@@ -109,6 +118,7 @@ pub fn get_config(conn: &Connection) -> AppResult<AppConfig> {
             config_path: parse_str(&m, "webdav_configPath", ""),
             stats_path: parse_str(&m, "webdav_statsPath", ""),
         },
+        rules: parse_json::<RulesConfig>(&m, "rulesConfig"),
     })
 }
 
@@ -167,5 +177,23 @@ mod tests {
 
         set_value(&c, "openaiUa", "custom-agent").unwrap();
         assert_eq!(get_config(&c).unwrap().openai_ua, "custom-agent");
+    }
+
+    #[test]
+    fn rules_config_roundtrips_from_store() {
+        let c = db();
+        set_value(
+            &c,
+            "rulesConfig",
+            r#"{"circuitBreaker":{"failureThreshold":5,"successThreshold":3,"timeoutSeconds":45,"errorRateThreshold":0.75,"minRequests":12}}"#,
+        )
+        .unwrap();
+
+        let cfg = get_config(&c).unwrap();
+        assert_eq!(cfg.rules.circuit_breaker.failure_threshold, 5);
+        assert_eq!(cfg.rules.circuit_breaker.success_threshold, 3);
+        assert_eq!(cfg.rules.circuit_breaker.timeout_seconds, 45);
+        assert_eq!(cfg.rules.circuit_breaker.error_rate_threshold, 0.75);
+        assert_eq!(cfg.rules.circuit_breaker.min_requests, 12);
     }
 }

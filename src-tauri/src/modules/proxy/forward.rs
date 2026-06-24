@@ -96,6 +96,7 @@ pub struct ProxyState {
     pub breakers: BreakerRegistry,
     /// thinking 签名整流器配置（反应式：上游签名错误时清洗 thinking/signature 后透明重试）。
     pub rectifier_config: RectifierConfig,
+    pub reasoning_effort_fallback: bool,
 }
 
 impl ProxyState {
@@ -719,7 +720,8 @@ pub async fn handle_proxy(
                 }
                 if !rotation::should_retry_status(status) {
                     // 读错误体：Responses→Chat reasoning_effort 降级 / thinking 签名整流（透明重试）。
-                    let may_downgrade_effort = responses_to_chat;
+                    let may_downgrade_effort =
+                        responses_to_chat && st.reasoning_effort_fallback;
                     let may_rectify_sig = st.rectifier_config.enabled && !sig_rectified;
                     let resp_headers = copy_response_headers(&resp);
                     let err_bytes = resp.bytes().await.unwrap_or_default();

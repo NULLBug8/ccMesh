@@ -6,6 +6,8 @@
 
 use serde_json::Value;
 
+use crate::models::rules::DegradationRules;
+
 /// 整流器配置（本项目只做签名整流，砍掉 cc-switch 的 budget/media 子开关）。
 #[derive(Debug, Clone)]
 pub struct RectifierConfig {
@@ -25,6 +27,15 @@ impl Default for RectifierConfig {
 }
 
 /// 整流结果。
+impl RectifierConfig {
+    pub fn from_rules(rules: &DegradationRules) -> Self {
+        Self {
+            enabled: rules.enabled,
+            request_thinking_signature: rules.request_thinking_signature,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct RectifyResult {
     /// 是否应用了整流。

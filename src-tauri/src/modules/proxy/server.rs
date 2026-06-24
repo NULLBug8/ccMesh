@@ -125,8 +125,11 @@ pub async fn start_proxy(
         stats,
         current_endpoint: Mutex::new(None),
         proxy_enabled: cfg.proxy_enabled,
-        breakers: BreakerRegistry::new(CircuitBreakerConfig::default()),
-        rectifier_config: RectifierConfig::default(),
+        breakers: BreakerRegistry::new(CircuitBreakerConfig::from_rules(
+            &cfg.rules.circuit_breaker,
+        )),
+        rectifier_config: RectifierConfig::from_rules(&cfg.rules.degradation),
+        reasoning_effort_fallback: cfg.rules.degradation.reasoning_effort_fallback,
     });
 
     let app = build_router(state.clone());
