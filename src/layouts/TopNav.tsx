@@ -1,14 +1,17 @@
-import { PanelLeftIcon } from "lucide-react";
+import { PanelLeftIcon, PanelsTopLeftIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ThemeToggle, Logo, LangToggle } from "@/components/common";
 import { VersionPopover } from "@/components/business";
-import { useLayoutStore } from "@/stores";
+import { useLayoutStore, usePageLayoutStore } from "@/stores";
 import { NavItem } from "./NavItem";
 import { NAV_ITEMS, SETTINGS_ITEM } from "./navConfig";
 
 export function TopNav() {
   const setNavMode = useLayoutStore((s) => s.setNavMode);
+  const activeView = useLayoutStore((s) => s.activeView);
+  const toggleEditMode = usePageLayoutStore((s) => s.toggleEditMode);
+  const isEditing = usePageLayoutStore((s) => s.isEditing(activeView));
 
   return (
     <header
@@ -27,6 +30,14 @@ export function TopNav() {
       </nav>
 
       <div className="flex shrink-0 items-center gap-2">
+        <Button
+          variant={isEditing ? "secondary" : "ghost"}
+          size="icon"
+          aria-label="切换布局编辑"
+          onClick={() => toggleEditMode(activeView)}
+        >
+          <PanelsTopLeftIcon className="size-4" />
+        </Button>
         <Button
           variant="outline"
           size="icon"

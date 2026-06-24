@@ -2,7 +2,7 @@
 id: 2038
 slug: layout-routing-logs-web
 title: 页面自由布局、路由规则配置、日志四段详情与 Web 配置台
-status: planning
+status: in_progress
 priority: high
 layer: fullstack
 owner: codex
@@ -26,5 +26,4 @@ created_at: 2026-06-24
 
 ## 当前阶段
 
-`planning`
-
+`in_progress`

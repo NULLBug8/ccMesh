@@ -1,5 +1,6 @@
 import {
   ChevronLeftIcon,
+  PanelsTopLeftIcon,
   ChevronRightIcon,
   PanelTopIcon,
 } from "lucide-react";
@@ -13,7 +14,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useLayoutStore } from "@/stores";
+import { useLayoutStore, usePageLayoutStore } from "@/stores";
 import { NavItem } from "./NavItem";
 import { NAV_ITEMS, SETTINGS_ITEM } from "./navConfig";
 
@@ -21,6 +22,9 @@ export function SideNav() {
   const sidebarState = useLayoutStore((s) => s.sidebarState);
   const toggleSidebar = useLayoutStore((s) => s.toggleSidebar);
   const setNavMode = useLayoutStore((s) => s.setNavMode);
+  const activeView = useLayoutStore((s) => s.activeView);
+  const toggleEditMode = usePageLayoutStore((s) => s.toggleEditMode);
+  const isEditing = usePageLayoutStore((s) => s.isEditing(activeView));
   const collapsed = sidebarState === "collapsed";
 
   return (
@@ -68,6 +72,21 @@ export function SideNav() {
             <LangToggle />
           </div>
           <div className={cn("flex gap-1", collapsed && "flex-col")}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={isEditing ? "secondary" : "ghost"}
+                  size="icon"
+                  aria-label="切换布局编辑"
+                  onClick={() => toggleEditMode(activeView)}
+                >
+                  <PanelsTopLeftIcon className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                {isEditing ? "退出布局编辑" : "进入布局编辑"}
+              </TooltipContent>
+            </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
