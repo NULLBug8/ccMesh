@@ -1,4 +1,5 @@
 import { request } from "../request";
+import type { RulesConfig } from "./rules";
 
 export interface UpdateSettings {
   autoCheck: boolean;
@@ -34,6 +35,7 @@ export interface AppConfig {
   claudeCliUa: string;
   update: UpdateSettings;
   webdav: WebDavConfig;
+  rules: RulesConfig;
 }
 
 export interface ProxyTestResult {

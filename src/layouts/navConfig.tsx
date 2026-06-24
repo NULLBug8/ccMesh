@@ -1,12 +1,13 @@
 import type { ComponentType } from "react";
 import {
-  GaugeIcon,
-  ServerIcon,
-  FileCogIcon,
   ChartColumnIcon,
+  FileCogIcon,
+  GaugeIcon,
   RefreshCwIcon,
   ScrollTextIcon,
+  ServerIcon,
   SettingsIcon,
+  ShieldCheckIcon,
 } from "lucide-react";
 
 import type { ViewId } from "@/stores";
@@ -27,6 +28,7 @@ export const NAV_ITEMS: NavItemDef[] = [
     labelEn: "Config Profiles",
     icon: FileCogIcon,
   },
+  { id: "rules", label: "规则配置", labelEn: "Rules", icon: ShieldCheckIcon },
   { id: "statistics", label: "统计", labelEn: "Statistics", icon: ChartColumnIcon },
   { id: "sync", label: "同步", labelEn: "Sync", icon: RefreshCwIcon },
   { id: "logs", label: "日志", labelEn: "Logs", icon: ScrollTextIcon },
