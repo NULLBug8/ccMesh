@@ -3,12 +3,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { InfoIcon, TriangleAlertIcon } from "lucide-react";
 
 import { StatusDot, TabularText } from "@/components/ui";
+import { Pagination } from "@/components/ui/Pagination";
 import {
   HoverCard,
   HoverCardContent,
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
-import { Pagination } from "@/components/ui/Pagination";
 import {
   Select,
   SelectContent,
@@ -16,31 +16,41 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { RANGE_OPTIONS, rangeMs, startOfTodayMs, type RangeKey } from "@/lib/range";
 import { formatDuration, formatTokenK } from "@/lib/format";
+import { RANGE_OPTIONS, rangeMs, startOfTodayMs, type RangeKey } from "@/lib/range";
+import { cn } from "@/lib/utils";
 import { statsApi, type RequestLog } from "@/services/modules/stats";
 
 type Mode = "live" | "ranged";
 
 interface Props {
-  /** live：事件驱动实时刷新；ranged：时间段 + 分页查询。 */
   mode: Mode;
-  /** 可选端点过滤。 */
   endpointFilter?: string;
   pageSize?: number;
-  /** 标题（默认按模式取）。 */
   title?: string;
+  selectedLogId?: number | null;
+  autoSelectFirst?: boolean;
+  onSelectLog?: (log: RequestLog | null) => void;
 }
 
-/**
- * 端点请求实时监控（统计页 ranged / 仪表盘 live 复用）。
- * 数据统一走 `get_request_logs` 分页查询；live 模式在第 1 页时由 `request-logged` 事件触发刷新。
- */
-export function RequestMonitor({ mode, endpointFilter, pageSize = 20, title }: Props) {
+interface RequestLogTableProps {
+  items: RequestLog[];
+  selectedLogId?: number | null;
+  onSelectLog?: (log: RequestLog) => void;
+}
+
+export function RequestMonitor({
+  mode,
+  endpointFilter,
+  pageSize = 20,
+  title,
+  selectedLogId,
+  autoSelectFirst = false,
+  onSelectLog,
+}: Props) {
   const qc = useQueryClient();
   const [page, setPage] = useState(1);
   const [rangeKey, setRangeKey] = useState<RangeKey>("today");
-  // 按天对齐的稳定锚点：同一天内多次渲染得到相同区间，避免 queryKey 逐帧漂移导致无限重取。
   const todayStart = startOfTodayMs();
   const range = useMemo(
     () => (mode === "ranged" ? rangeMs(rangeKey, todayStart) : {}),
@@ -67,36 +77,52 @@ export function RequestMonitor({ mode, endpointFilter, pageSize = 20, title }: P
       }),
   });
 
-  // live：新请求事件 → 仅在第 1 页时刷新，避免打断翻页浏览
   useEffect(() => {
     if (mode !== "live") return;
-    let un: (() => void) | undefined;
+    let unlisten: (() => void) | undefined;
     statsApi
       .onRequestLogged(() => {
         if (page === 1) {
           qc.invalidateQueries({ queryKey: ["request-logs", "live"] });
         }
       })
-      .then((u) => {
-        un = u;
+      .then((cleanup) => {
+        unlisten = cleanup;
       });
-    return () => un?.();
+    return () => unlisten?.();
   }, [mode, page, qc]);
 
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
 
+  useEffect(() => {
+    if (!onSelectLog) return;
+    if (items.length === 0) {
+      if (selectedLogId != null) onSelectLog(null);
+      return;
+    }
+    if (!autoSelectFirst) return;
+
+    if (selectedLogId == null) {
+      onSelectLog(items[0]);
+      return;
+    }
+
+    const matched = items.find((item) => item.id === selectedLogId);
+    onSelectLog(matched ?? items[0]);
+  }, [autoSelectFirst, items, onSelectLog, selectedLogId]);
+
   return (
     <section className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-medium text-ink-secondary">
           {title ?? (mode === "live" ? "实时请求监控" : "端点请求记录")}
         </h2>
         {mode === "ranged" && (
           <Select
             value={rangeKey}
-            onValueChange={(v) => {
-              setRangeKey(v as RangeKey);
+            onValueChange={(value) => {
+              setRangeKey(value as RangeKey);
               setPage(1);
             }}
           >
@@ -104,9 +130,9 @@ export function RequestMonitor({ mode, endpointFilter, pageSize = 20, title }: P
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {RANGE_OPTIONS.map((r) => (
-                <SelectItem key={r.key} value={r.key}>
-                  {r.label}
+              {RANGE_OPTIONS.map((option) => (
+                <SelectItem key={option.key} value={option.key}>
+                  {option.label}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -115,9 +141,13 @@ export function RequestMonitor({ mode, endpointFilter, pageSize = 20, title }: P
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-ink-mute">加载中…</p>
+        <p className="text-sm text-ink-mute">加载中...</p>
       ) : (
-        <RequestLogTable items={items} />
+        <RequestLogTable
+          items={items}
+          selectedLogId={selectedLogId}
+          onSelectLog={onSelectLog ? (log) => onSelectLog(log) : undefined}
+        />
       )}
 
       {total > pageSize && (
@@ -132,11 +162,15 @@ export function RequestMonitor({ mode, endpointFilter, pageSize = 20, title }: P
   );
 }
 
-/** 纯展示：请求明细表（空态自处理），便于复用与单测。 */
-export function RequestLogTable({ items }: { items: RequestLog[] }) {
+export function RequestLogTable({
+  items,
+  selectedLogId,
+  onSelectLog,
+}: RequestLogTableProps) {
   if (items.length === 0) {
     return <p className="text-sm text-ink-mute">暂无请求记录</p>;
   }
+
   return (
     <div className="overflow-hidden rounded-lg border border-edge">
       <table className="w-full text-sm">
@@ -153,8 +187,13 @@ export function RequestLogTable({ items }: { items: RequestLog[] }) {
           </tr>
         </thead>
         <tbody>
-          {items.map((r) => (
-            <RequestRow key={r.id || r.ts} log={r} />
+          {items.map((log) => (
+            <RequestRow
+              key={log.id || log.ts}
+              log={log}
+              selected={selectedLogId != null && log.id === selectedLogId}
+              onSelect={onSelectLog}
+            />
           ))}
         </tbody>
       </table>
@@ -162,21 +201,18 @@ export function RequestLogTable({ items }: { items: RequestLog[] }) {
   );
 }
 
-/** 请求时间按 24 小时制 时:分:秒（零填充）展示，避免地区设置带来的上午/下午前缀。 */
 export function fmtTime(ts: number): string {
-  const d = new Date(ts);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  const date = new Date(ts);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
-/** 请求日期 年-月-日（零填充，本地时区）。 */
 export function fmtDate(ts: number): string {
-  const d = new Date(ts);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  const date = new Date(ts);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-/** 请求时间完整展示：年-月-日 时:分:秒（24 小时制）。 */
 export function fmtDateTime(ts: number): string {
   return `${fmtDate(ts)} ${fmtTime(ts)}`;
 }
@@ -207,26 +243,54 @@ export function ErrorDetail({ errorBody }: { errorBody: string }) {
   );
 }
 
-/** 旧行无真实路径时，按入站协议推断兜底路由。 */
 function inferPath(format: string): string {
   if (format === "openai") return "/v1/chat/completions";
   if (format === "responses") return "/v1/responses";
   if (format === "claude") return "/v1/messages";
-  return "—";
+  return "--";
 }
 
-function RequestRow({ log }: { log: RequestLog }) {
+function RequestRow({
+  log,
+  selected,
+  onSelect,
+}: {
+  log: RequestLog;
+  selected: boolean;
+  onSelect?: (log: RequestLog) => void;
+}) {
   const total =
     log.inputTokens +
     log.outputTokens +
     log.cacheCreationTokens +
     log.cacheReadTokens;
+  const selectable = Boolean(onSelect);
+
+  const selectRow = () => onSelect?.(log);
+
   return (
-    <tr className="border-b border-edge-subtle last:border-0">
-      <td
-        className="px-3 py-2 whitespace-nowrap"
-        title={new Date(log.ts).toLocaleString()}
-      >
+    <tr
+      aria-selected={selectable ? selected : undefined}
+      data-testid={`request-log-row-${log.id || log.ts}`}
+      tabIndex={selectable ? 0 : undefined}
+      className={cn(
+        "border-b border-edge-subtle last:border-0",
+        selectable && "cursor-pointer transition-colors hover:bg-surface-hover/40",
+        selected && "bg-info/15",
+      )}
+      onClick={selectable ? selectRow : undefined}
+      onKeyDown={
+        selectable
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                selectRow();
+              }
+            }
+          : undefined
+      }
+    >
+      <td className="px-3 py-2 whitespace-nowrap" title={new Date(log.ts).toLocaleString()}>
         <TabularText>{fmtDateTime(log.ts)}</TabularText>
       </td>
       <td className="px-3 py-2">{log.endpointName}</td>
@@ -238,11 +302,7 @@ function RequestRow({ log }: { log: RequestLog }) {
       </td>
       <td
         className="max-w-[200px] truncate px-3 py-2 font-mono text-xs text-ink-secondary"
-        title={
-          log.upstreamUrl
-            ? `${log.upstreamUrl}${log.upstreamPath}`
-            : undefined
-        }
+        title={log.upstreamUrl ? `${log.upstreamUrl}${log.upstreamPath}` : undefined}
       >
         {log.upstreamPath || inferPath(log.inboundFormat)}
       </td>
@@ -262,6 +322,7 @@ function RequestRow({ log }: { log: RequestLog }) {
                   aria-label="查看错误详情"
                   title="查看错误详情"
                   className="inline-flex shrink-0 items-center text-warning/60 transition-colors hover:text-warning"
+                  onClick={(event) => event.stopPropagation()}
                 >
                   <TriangleAlertIcon className="size-3" />
                 </button>
@@ -277,12 +338,12 @@ function RequestRow({ log }: { log: RequestLog }) {
       </td>
       <td className="px-3 py-2 text-right text-xs text-ink-secondary">
         <TabularText>
-          {!log.isError && log.durationMs != null ? formatDuration(log.durationMs) : "—"}
+          {!log.isError && log.durationMs != null ? formatDuration(log.durationMs) : "--"}
         </TabularText>
       </td>
       <td className="px-3 py-2 text-right text-xs text-ink-secondary">
         <TabularText>
-          {!log.isError && log.firstByteMs != null ? formatDuration(log.firstByteMs) : "—"}
+          {!log.isError && log.firstByteMs != null ? formatDuration(log.firstByteMs) : "--"}
         </TabularText>
       </td>
       <td className="px-3 py-2 text-right">
@@ -291,6 +352,7 @@ function RequestRow({ log }: { log: RequestLog }) {
             <button
               type="button"
               className="inline-flex items-center gap-1 text-ink-secondary transition-colors hover:text-foreground"
+              onClick={(event) => event.stopPropagation()}
             >
               <TabularText>{total}</TabularText>
               <InfoIcon className="size-3.5" />
@@ -312,6 +374,7 @@ export function TokenDetail({ log, total }: { log: RequestLog; total: number }) 
     ["缓存创建", log.cacheCreationTokens],
     ["缓存读取", log.cacheReadTokens],
   ];
+
   return (
     <div className="flex flex-col gap-1.5 text-xs">
       {log.model && (
@@ -321,14 +384,14 @@ export function TokenDetail({ log, total }: { log: RequestLog; total: number }) 
       )}
       {log.actualModel && (
         <div title={log.actualModel} className="text-ink-secondary">
-          实际模型：<span className=" truncate text-info">{log.actualModel}</span>
+          实际模型：<span className="truncate text-info">{log.actualModel}</span>
         </div>
       )}
-      {rows.map(([k, v]) => (
-        <div key={k} className="flex items-center justify-between gap-4">
-          <span className="text-ink-secondary">{k}</span>
-          <span title={v.toLocaleString()}>
-            <TabularText>{formatTokenK(v)}</TabularText>
+      {rows.map(([label, value]) => (
+        <div key={label} className="flex items-center justify-between gap-4">
+          <span className="text-ink-secondary">{label}</span>
+          <span title={value.toLocaleString()}>
+            <TabularText>{formatTokenK(value)}</TabularText>
           </span>
         </div>
       ))}
@@ -340,7 +403,7 @@ export function TokenDetail({ log, total }: { log: RequestLog; total: number }) 
       </div>
       {!log.isError && log.firstByteMs != null && (
         <div className="flex items-center justify-between gap-4 text-ink-secondary">
-          <span>首字</span>
+          <span>首字节</span>
           <TabularText>{formatDuration(log.firstByteMs)}</TabularText>
         </div>
       )}

@@ -33,7 +33,7 @@ function chip(active: boolean): string {
   }`;
 }
 
-/** 日志工具栏：等级过滤 chips(含计数) + 搜索 + 捕获等级开关 + 复制/清空。 */
+/** 日志工具栏：等级筛选、搜索、捕获等级、复制与清空。 */
 export function LogToolbar({
   selected,
   onToggleLevel,
@@ -71,9 +71,9 @@ export function LogToolbar({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {CAPTURE_LEVELS.map((l) => (
-                <SelectItem key={l} value={l}>
-                  {l}
+              {CAPTURE_LEVELS.map((level) => (
+                <SelectItem key={level} value={level}>
+                  {level}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -91,8 +91,8 @@ export function LogToolbar({
         <SearchIcon className="absolute top-1/2 left-2 size-4 -translate-y-1/2 text-ink-mute" />
         <input
           value={keyword}
-          onChange={(e) => onKeyword(e.target.value)}
-          placeholder="搜索 message / 来源 / 字段…"
+          onChange={(event) => onKeyword(event.target.value)}
+          placeholder="搜索 message / 来源 / 字段..."
           className="h-8 w-full rounded-md border border-edge bg-transparent pr-2 pl-8 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
         />
       </div>

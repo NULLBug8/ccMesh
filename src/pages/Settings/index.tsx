@@ -1,7 +1,6 @@
 import { useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
-import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { toast } from "sonner";
 
 import { PageLayoutEditor } from "@/components/business/page-layout/PageLayoutEditor";
@@ -19,6 +18,7 @@ import { Switch } from "@/components/ui/switch";
 import { configApi } from "@/services/modules/config";
 import { logsApi } from "@/services/modules/logs";
 import { windowApi } from "@/services/modules/window";
+import { isWebRuntime } from "@/services/runtime";
 import { resolveViewLayout, usePageLayoutStore } from "@/stores";
 import { TokenCounter } from "./_components/TokenCounter";
 import { UpdateSection } from "./_components/UpdateSection";
@@ -56,6 +56,7 @@ function DescRow({
 const errMsg = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 export function Settings() {
+  const webRuntime = isWebRuntime();
   const qc = useQueryClient();
   const { setTheme } = useTheme();
   const { data: cfg } = useQuery({ queryKey: ["config"], queryFn: configApi.getConfig });
@@ -74,11 +75,20 @@ export function Settings() {
 
   const autostartQ = useQuery({
     queryKey: ["autostart-enabled"],
-    queryFn: () => isEnabled(),
+    queryFn: async () => {
+      if (webRuntime) return false;
+      const { isEnabled } = await import("@tauri-apps/plugin-autostart");
+      return isEnabled();
+    },
   });
 
   const toggleAutostart = async (enabled: boolean) => {
     try {
+      if (webRuntime) {
+        toast.info("Web 端不支持系统自启动");
+        return;
+      }
+      const { enable, disable } = await import("@tauri-apps/plugin-autostart");
       if (enabled) await enable();
       else await disable();
       qc.invalidateQueries({ queryKey: ["autostart-enabled"] });
@@ -237,7 +247,7 @@ export function Settings() {
         <DescRow title="自启动" desc="跟随系统自动启动">
           <Switch
             checked={autostartQ.data ?? false}
-            disabled={autostartQ.isLoading}
+            disabled={autostartQ.isLoading || webRuntime}
             onCheckedChange={toggleAutostart}
             aria-label="自启动"
           />

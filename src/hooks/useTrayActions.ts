@@ -1,28 +1,33 @@
 import { useEffect } from "react";
-import { listen } from "@tauri-apps/api/event";
 import { toast } from "sonner";
 
 import { proxyApi } from "@/services/modules/proxy";
+import { isWebRuntime } from "@/services/runtime";
 
-/** 监听托盘 `tray-action` 事件（启停代理）。 */
 export function useTrayActions() {
   useEffect(() => {
+    if (isWebRuntime()) return;
+
     let unlisten: (() => void) | undefined;
-    listen<string>("tray-action", async (e) => {
-      try {
-        if (e.payload === "start") {
-          await proxyApi.start();
-          toast.success("代理已启动");
-        } else if (e.payload === "stop") {
-          await proxyApi.stop();
-          toast.success("代理已停止");
+
+    void import("@tauri-apps/api/event").then(({ listen }) => {
+      listen<string>("tray-action", async (event) => {
+        try {
+          if (event.payload === "start") {
+            await proxyApi.start();
+            toast.success("代理已启动");
+          } else if (event.payload === "stop") {
+            await proxyApi.stop();
+            toast.success("代理已停止");
+          }
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : String(error));
         }
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : String(err));
-      }
-    }).then((u) => {
-      unlisten = u;
+      }).then((dispose) => {
+        unlisten = dispose;
+      });
     });
+
     return () => unlisten?.();
   }, []);
 }

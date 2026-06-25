@@ -47,17 +47,33 @@ export interface DailyStat {
   cacheReadTokens: number;
 }
 
-/** 逐条请求明细。事件推送时 id 为 0（尚未落库），列表以 ts 作为 key。 */
+export interface RequestTraceHeader {
+  key: string;
+  value: string;
+}
+
+export interface RequestTraceStage {
+  method: string | null;
+  url: string | null;
+  statusCode: number | null;
+  headers: RequestTraceHeader[];
+  body: string | null;
+}
+
+export interface RequestTrace {
+  receivedRequest: RequestTraceStage;
+  forwardRequest: RequestTraceStage;
+  receivedForwardedRequest: RequestTraceStage;
+  responseRequest: RequestTraceStage;
+}
+
 export interface RequestLog {
   id: number;
-  /** 请求时间（Unix 毫秒，UTC）。 */
   ts: number;
   endpointName: string;
   inboundFormat: string;
   upstreamUrl: string;
-  /** 真实入站路由路径（如 /v1/messages）。旧行为空串。 */
   inboundPath: string;
-  /** 真实出站路由路径（如 /v1/chat/completions）。旧行为空串。 */
   upstreamPath: string;
   statusCode: number | null;
   isError: boolean;
@@ -67,12 +83,10 @@ export interface RequestLog {
   cacheReadTokens: number;
   model: string | null;
   durationMs: number | null;
-  /** 首字节延迟（毫秒）：流式为首个内容分片到达耗时，缓冲为响应头到达耗时。旧行/无数据为 null。 */
   firstByteMs: number | null;
-  /** 实际(出站)模型：映射/锁定改写后与请求模型不同才有值；透传/旧行为 null。 */
   actualModel: string | null;
-  /** 错误响应体（仅错误请求，限长写入）。旧行/无响应体为 null。 */
   errorBody: string | null;
+  trace: RequestTrace | null;
 }
 
 export interface RequestLogPage {
@@ -95,7 +109,6 @@ export interface RequestLogQuery {
 
 export const statsApi = {
   getStats: () => request<StatsOverview>("get_stats"),
-  /** 请求明细分页查询（时间段 + 可选端点过滤）。 */
   getRequestLogs: (q: RequestLogQuery) =>
     request<RequestLogPage>("get_request_logs", {
       startMs: q.startMs,
@@ -104,19 +117,14 @@ export const statsApi = {
       page: q.page,
       pageSize: q.pageSize,
     }),
-  /** 历史记录分页（跨全时间，按端点×日聚合行）。 */
   getStatsHistory: (page: number, pageSize: number) =>
     request<StatsHistoryPage>("get_stats_history", { page, pageSize }),
-  /** 删除单端点单日历史记录。 */
   deleteDailyStat: (endpointName: string, date: string) =>
     request<number>("delete_daily_stat", { endpointName, date }),
-  /** 删除某一天全部历史记录。 */
   deleteStatsByDate: (date: string) =>
     request<number>("delete_stats_by_date", { date }),
-  /** 订阅统计更新事件（零延迟刷新）。 */
   onUpdated: (cb: () => void): Promise<UnlistenFn> =>
     subscribe(Events.statsUpdated, () => cb()),
-  /** 订阅单条请求明细事件（实时监控 live 模式追加）。 */
   onRequestLogged: (cb: (log: RequestLog) => void): Promise<UnlistenFn> =>
-    subscribe<RequestLog>(Events.requestLogged, (e) => cb(e.payload)),
+    subscribe<RequestLog>(Events.requestLogged, (event) => cb(event.payload)),
 };

@@ -1,36 +1,43 @@
-import { invoke } from "@tauri-apps/api/core";
-import { listen, type EventCallback, type UnlistenFn } from "@tauri-apps/api/event";
+import type { EventCallback, UnlistenFn } from "@tauri-apps/api/event";
+
+import { createTransport } from "./runtime";
+
+const transport = createTransport();
 
 /**
- * 统一调用后端命令。约定：命令名 snake_case，参数键 camelCase（Tauri 自动转换）。
- * 后端 AppError 已序列化为字符串，这里归一为 Error 抛出，供 TanStack Query / try-catch 处理。
+ * 统一调用后端命令。约定：命令名 snake_case，参数键 camelCase。
+ * 桌面端走 Tauri invoke，Web 端走管理接口。
  */
 export async function request<T>(
   command: string,
   args?: Record<string, unknown>,
 ): Promise<T> {
   try {
-    return await invoke<T>(command, args);
-  } catch (e) {
+    return await transport.request<T>(command, args);
+  } catch (error) {
     const message =
-      typeof e === "string"
-        ? e
-        : e instanceof Error
-          ? e.message
-          : JSON.stringify(e);
+      typeof error === "string"
+        ? error
+        : error instanceof Error
+          ? error.message
+          : JSON.stringify(error);
     throw new Error(message);
   }
 }
 
-/** 订阅后端事件，返回取消订阅函数。事件名 kebab-case。 */
-export function subscribe<T>(
+/**
+ * 统一订阅后端事件。桌面端走 Tauri listen，Web 端走 SSE。
+ */
+export async function subscribe<T>(
   event: string,
   handler: EventCallback<T>,
 ): Promise<UnlistenFn> {
-  return listen<T>(event, handler);
+  const unlisten = await transport.subscribe<T>(event, (wrapped) =>
+    handler(wrapped as Parameters<EventCallback<T>>[0]),
+  );
+  return unlisten as UnlistenFn;
 }
 
-/** 后端事件名常量（kebab-case），随阶段补充。 */
 export const Events = {
   statsUpdated: "stats-updated",
   requestLogged: "request-logged",

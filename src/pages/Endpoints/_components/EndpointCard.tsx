@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   ActivityIcon,
   CopyIcon,
@@ -33,6 +32,7 @@ import {
   outboundModels,
   type Endpoint,
 } from "@/services/modules/endpoint";
+import { isWebRuntime } from "@/services/runtime";
 import type { EndpointView } from "@/stores";
 import { ModelMappingDialog } from "./ModelMappingDialog";
 import { TestBadge } from "./TestBadge";
@@ -85,6 +85,7 @@ export function EndpointCard({
   dragHandleRef,
   view = "list",
 }: Props) {
+  const webRuntime = isWebRuntime();
   const qc = useQueryClient();
   const invalidate = () => qc.invalidateQueries({ queryKey: ["endpoints"] });
   const [testOpen, setTestOpen] = useState(false);
@@ -245,9 +246,18 @@ export function EndpointCard({
         type="button"
         className="cursor-pointer truncate text-left hover:text-primary hover:underline"
         title={`在浏览器打开 ${endpoint.apiUrl}`}
-        onClick={(e) => {
+        onClick={async (e) => {
           e.stopPropagation();
-          openUrl(endpoint.apiUrl).catch((err) => toast.error(errMsg(err)));
+          try {
+            if (webRuntime) {
+              window.open(endpoint.apiUrl, "_blank", "noopener,noreferrer");
+              return;
+            }
+            const { openUrl } = await import("@tauri-apps/plugin-opener");
+            await openUrl(endpoint.apiUrl);
+          } catch (err) {
+            toast.error(errMsg(err));
+          }
         }}
       >
         {endpoint.apiUrl}

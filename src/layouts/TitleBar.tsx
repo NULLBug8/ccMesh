@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { isWebRuntime } from "@/services/runtime";
 import { IS_MAC } from "@/lib/platform";
 import { WindowControls } from "./WindowControls";
 
@@ -7,6 +8,14 @@ import { WindowControls } from "./WindowControls";
  * macOS 改用系统原生红绿灯（位于左上角），故左侧留白避让，且不渲染自绘按钮。
  */
 export function TitleBar() {
+  if (isWebRuntime()) {
+    return (
+      <div className="flex h-8 shrink-0 items-center justify-between border-b border-edge-subtle bg-surface px-3">
+        <span className="text-xs font-medium tracking-tight text-ink-mute">ccMesh Web</span>
+      </div>
+    );
+  }
+
   return (
     <div
       data-tauri-drag-region

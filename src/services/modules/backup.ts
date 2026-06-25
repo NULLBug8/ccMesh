@@ -1,4 +1,4 @@
-import { open, save } from "@tauri-apps/plugin-dialog";
+import { isWebRuntime } from "@/services/runtime";
 
 import { request } from "../request";
 
@@ -20,18 +20,24 @@ function defaultName(): string {
   return `ccmesh-config-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}.json`;
 }
 
+function ensureDesktopCapability(feature: string) {
+  if (isWebRuntime()) {
+    throw new Error(`${feature} 仅桌面端支持`);
+  }
+}
+
 export const backupApi = {
-  /** 选择保存路径并导出配置；用户取消返回 null，否则返回保存路径。 */
   exportConfig: async (): Promise<string | null> => {
+    ensureDesktopCapability("本地导出");
+    const { save } = await import("@tauri-apps/plugin-dialog");
     const path = await save({ defaultPath: defaultName(), filters: JSON_FILTER });
     if (!path) return null;
     await request<void>("export_config", { path });
     return path;
   },
-  /** 选择文件并导入配置；用户取消返回 null，否则返回导入摘要。 */
-  importConfig: async (
-    strategy: ImportStrategy,
-  ): Promise<ImportSummary | null> => {
+  importConfig: async (strategy: ImportStrategy): Promise<ImportSummary | null> => {
+    ensureDesktopCapability("本地导入");
+    const { open } = await import("@tauri-apps/plugin-dialog");
     const selected = await open({
       multiple: false,
       directory: false,

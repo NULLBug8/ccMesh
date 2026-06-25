@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -14,19 +13,27 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { configApi } from "@/services/modules/config";
 import { windowApi } from "@/services/modules/window";
+import { isWebRuntime } from "@/services/runtime";
 
-/** ask 模式关闭窗口时弹出选择（最小化到托盘 / 退出，可记住）。 */
 export function CloseDialog() {
   const [open, setOpen] = useState(false);
   const [remember, setRemember] = useState(false);
 
   useEffect(() => {
+    if (isWebRuntime()) return;
+
     let unlisten: (() => void) | undefined;
-    listen("close-requested", () => setOpen(true)).then((u) => {
-      unlisten = u;
+
+    void import("@tauri-apps/api/event").then(({ listen }) => {
+      listen("close-requested", () => setOpen(true)).then((dispose) => {
+        unlisten = dispose;
+      });
     });
+
     return () => unlisten?.();
   }, []);
+
+  if (isWebRuntime()) return null;
 
   const choose = async (action: "minimize" | "quit") => {
     if (remember) {
