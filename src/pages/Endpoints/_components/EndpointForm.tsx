@@ -25,11 +25,14 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useEndpoints } from "@/hooks/useEndpoints";
 import {
   BALANCE_QUERY_PRESETS,
   DEFAULT_BALANCE_QUERY,
   endpointApi,
   type BalanceQueryConfig,
+  type BalanceProbeTemplateResult,
+  type BalanceProbeResult,
   type Endpoint,
 } from "@/services/modules/endpoint";
 
@@ -86,6 +89,10 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
   const [modelInput, setModelInput] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [tab, setTab] = useState("form");
+  const [balanceProbe, setBalanceProbe] = useState<BalanceProbeResult | null>(null);
+  const [customProbePath, setCustomProbePath] = useState("");
+  const [selectedAiEndpointId, setSelectedAiEndpointId] = useState("");
+  const { data: endpoints = [] } = useEndpoints();
 
   useEffect(() => {
     if (!open) return;
@@ -109,6 +116,9 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
     setModelInput("");
     setShowKey(false);
     setTab("form");
+    setBalanceProbe(null);
+    setCustomProbePath("");
+    setSelectedAiEndpointId("");
   }, [open, editing]);
 
   const update = (patch: Partial<FormState>) =>
@@ -170,6 +180,44 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
     onError: (e) => toast.error(errMsg(e)),
   });
 
+  const probeBalance = useMutation({
+    mutationFn: (customPath?: string) => {
+      if (!editing) throw new Error("请先保存端点后再识别余额模板");
+      return endpointApi.probeBalanceTemplates(editing.id, customPath);
+    },
+    onSuccess: (result) => {
+      setBalanceProbe(result);
+      if (result.matched?.config) {
+        update({ balanceQuery: { ...result.matched.config, enabled: true } });
+        toast.success(`已识别余额模板：${result.matched.templateId}`);
+      } else if (result.status === "sampleAvailable") {
+        toast.info("余额接口有返回数据，但需要配置提取规则");
+      } else {
+        toast.error("内置模板 URL 均未请求成功，请填写自定义余额接口路径再探测");
+      }
+    },
+    onError: (e) => toast.error(errMsg(e)),
+  });
+
+  const generateBalance = useMutation({
+    mutationFn: (sample: BalanceProbeTemplateResult) => {
+      if (!editing) throw new Error("请先保存端点后再生成余额模板");
+      const aiEndpointId = Number(selectedAiEndpointId);
+      if (!aiEndpointId) throw new Error("请选择 AI 配置端点");
+      return endpointApi.generateBalanceTemplate(editing.id, aiEndpointId, {
+        templateId: sample.templateId,
+        path: sample.path,
+        statusCode: sample.statusCode,
+        sample: sample.sample,
+      });
+    },
+    onSuccess: (config) => {
+      update({ balanceQuery: { ...config, enabled: true } });
+      toast.success("AI 已生成余额模板");
+    },
+    onError: (e) => toast.error(errMsg(e)),
+  });
+
   const onJsonChange = (val: string) => {
     setJsonText(val);
     try {
@@ -207,7 +255,7 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg overflow-x-hidden">
+      <DialogContent className="max-w-3xl overflow-x-hidden">
         <DialogHeader>
           <DialogTitle>{editing ? "编辑端点" : "新建端点"}</DialogTitle>
         </DialogHeader>
@@ -396,6 +444,150 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
           </TabsContent>
 
           <TabsContent value="balance" className="flex flex-col gap-3">
+            <div className="rounded-xl border border-edge bg-surface/80 p-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <div className="text-sm font-semibold">智能识别余额模板</div>
+                  <p className="mt-1 max-w-xl text-xs text-ink-mute">
+                    自动尝试内置余额接口。命中后会直接填入模板；如果 URL 全部失败，不会调用 AI，只展示失败原因并允许自定义路径复探。
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => probeBalance.mutate(undefined)}
+                  disabled={!editing || probeBalance.isPending}
+                  aria-label="智能识别余额模板"
+                >
+                  {probeBalance.isPending ? "识别中..." : "智能识别余额模板"}
+                </Button>
+              </div>
+
+              {!editing ? (
+                <p className="mt-3 rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning">
+                  新建端点需要先保存一次，才能用真实密钥探测余额接口。
+                </p>
+              ) : null}
+
+              {balanceProbe ? (
+                <div className="mt-4 space-y-3">
+                  {balanceProbe.status === "matched" && balanceProbe.matched ? (
+                    <div className="rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
+                      已命中 {balanceProbe.matched.templateId}
+                      {balanceProbe.matched.balance ? `，余额 ${balanceProbe.matched.balance}` : ""}
+                    </div>
+                  ) : null}
+
+                  {balanceProbe.status === "sampleAvailable" ? (
+                    <div className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
+                      URL 已返回数据，但内置 JSON Path 没提取到余额。下一步可以选择 AI 端点生成模板。
+                    </div>
+                  ) : null}
+
+                  {balanceProbe.status === "allFailed" ? (
+                    <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                      全部模板 URL 都没有请求成功
+                    </div>
+                  ) : null}
+
+                  <div className="overflow-hidden rounded-lg border border-edge-subtle">
+                    <div className="grid grid-cols-[1.1fr_0.8fr_1.2fr] bg-background/70 px-3 py-2 text-xs font-medium text-ink-mute">
+                      <span>模板 / 路径</span>
+                      <span>状态</span>
+                      <span>结果</span>
+                    </div>
+                    {balanceProbe.results.map((item) => (
+                      <div
+                        key={`${item.templateId}-${item.path}`}
+                        className="grid grid-cols-[1.1fr_0.8fr_1.2fr] gap-2 border-t border-edge-subtle px-3 py-2 text-xs"
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate font-medium">{item.templateId}</div>
+                          <div className="truncate text-ink-mute" title={item.path}>
+                            {item.path}
+                          </div>
+                        </div>
+                        <div>
+                          {item.success
+                            ? "已命中"
+                            : item.urlReachable
+                              ? "URL 可用"
+                              : "URL 失败"}
+                          {item.statusCode ? ` · HTTP ${item.statusCode}` : ""}
+                        </div>
+                        <div className="text-ink-mute">{item.message}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {balanceProbe.status === "allFailed" ? (
+                    <div className="grid gap-2 rounded-lg border border-edge-subtle bg-background/60 p-3 md:grid-cols-[1fr_auto]">
+                      <div className="flex flex-col gap-1.5">
+                        <Label htmlFor="custom-balance-probe-path">自定义余额接口路径</Label>
+                        <Input
+                          id="custom-balance-probe-path"
+                          aria-label="自定义余额接口路径"
+                          value={customProbePath}
+                          placeholder="/api/user/self"
+                          onChange={(e) => setCustomProbePath(e.target.value)}
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="self-end"
+                        onClick={() => probeBalance.mutate(customProbePath)}
+                        disabled={!customProbePath.trim() || probeBalance.isPending}
+                      >
+                        用自定义路径再探测
+                      </Button>
+                    </div>
+                  ) : null}
+
+                  {balanceProbe.status === "sampleAvailable" ? (
+                    <div className="rounded-lg border border-edge-subtle bg-background/60 p-3">
+                      <p className="text-xs text-ink-mute">
+                        AI 生成模板会发送已脱敏的接口返回样本，不会发送 API Key。请选择 AI 端点后手动触发。
+                      </p>
+                      <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto]">
+                        <div className="flex flex-col gap-1.5">
+                          <Label htmlFor="balance-ai-endpoint">AI 配置端点</Label>
+                          <select
+                            id="balance-ai-endpoint"
+                            aria-label="AI 配置端点"
+                            className="h-9 rounded-sm border border-input bg-surface-raised px-3 text-sm"
+                            value={selectedAiEndpointId}
+                            onChange={(e) => setSelectedAiEndpointId(e.target.value)}
+                          >
+                            <option value="">请选择</option>
+                            {endpoints
+                              .filter((ep) => ep.enabled)
+                              .map((ep) => (
+                                <option key={ep.id} value={ep.id}>
+                                  {ep.name}
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="self-end"
+                          onClick={() => {
+                            const sample = balanceProbe.usableSamples[0];
+                            if (sample) generateBalance.mutate(sample);
+                          }}
+                          disabled={!selectedAiEndpointId || generateBalance.isPending}
+                        >
+                          {generateBalance.isPending ? "生成中..." : "让 AI 生成模板"}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+
             <div className="flex items-center justify-between rounded-lg border border-edge-subtle bg-background/70 px-4 py-3">
               <div>
                 <div className="text-sm font-medium">启用余额查询</div>

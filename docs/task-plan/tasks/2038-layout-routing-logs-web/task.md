@@ -35,3 +35,6 @@ created_at: 2026-06-24
 - 规则配置增加模型映射策略、最大重试预算、请求超时、失败状态码、流式降级和降级温度等配置项；每项均显示示例说明。
 - 模型映射路由策略默认 `site-first`，并支持 `global-native-first`；后端候选排序已接入运行时。
 - `3001` 调试实例已使用旧数据目录重启，新增本地管理命令已验证注册。
+
+## 2026-06-27 Balance template assistant
+- Endpoint balance tab now supports smart balance template detection: built-in template probing, automatic apply on match, explicit all-URL-failed state with custom path re-probe, and AI generation only after a sanitized response sample is available.

@@ -78,3 +78,19 @@
 - [ ] Run `npm run build`.
 - [ ] Run `cargo check --manifest-path src-tauri/Cargo.toml`.
 - [ ] Rebuild frontend dist and verify `http://127.0.0.1:3001/` in browser.
+
+### Task 2038.15: Smart Balance Template Detection
+
+**Files:**
+- Modify: `src-tauri/src/commands/endpoint.rs`
+- Modify: `src-tauri/src/commands/web_admin.rs`
+- Modify: `src-tauri/src/lib.rs`
+- Modify: `src/services/modules/endpoint.ts`
+- Modify: `src/pages/Endpoints/_components/EndpointForm.tsx`
+- Modify: `src/__tests__/balanceConfig.test.tsx`
+
+- [x] Write failing frontend and Rust tests for probe classification and no-sample AI blocking.
+- [x] Add built-in template probing with matched/sampleAvailable/allFailed classification.
+- [x] Show all failed template reasons and custom path re-probe entry when every URL fails.
+- [x] Add AI-assisted template generation only after a sanitized response sample is available.
+- [x] Verify on `http://127.0.0.1:3001/` without touching the old `3000` instance.

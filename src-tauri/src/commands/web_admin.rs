@@ -126,6 +126,21 @@ struct QueryEndpointBalanceArgs {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct ProbeEndpointBalanceTemplatesArgs {
+    id: i64,
+    custom_path: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GenerateBalanceTemplateWithAiArgs {
+    id: i64,
+    ai_endpoint_id: i64,
+    sample: endpoint::BalanceTemplateAiSample,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct FetchEndpointModelsArgs {
     api_url: String,
     api_key: String,
@@ -303,7 +318,11 @@ pub async fn invoke_http(
             "get_proxy_status" => to_json(proxy::get_proxy_status(state.clone())?),
             "switch_endpoint" => {
                 let args: SwitchEndpointArgs = parse_args(body.args)?;
-                to_json(proxy::switch_endpoint(app.clone(), state.clone(), args.name)?)
+                to_json(proxy::switch_endpoint(
+                    app.clone(),
+                    state.clone(),
+                    args.name,
+                )?)
             }
             "get_stats" => to_json(stats::get_stats(state.clone())?),
             "get_request_logs" => {
@@ -319,7 +338,11 @@ pub async fn invoke_http(
             }
             "get_stats_history" => {
                 let args: StatsHistoryArgs = parse_args(body.args)?;
-                to_json(stats::get_stats_history(state.clone(), args.page, args.page_size)?)
+                to_json(stats::get_stats_history(
+                    state.clone(),
+                    args.page,
+                    args.page_size,
+                )?)
             }
             "delete_daily_stat" => {
                 let args: DeleteDailyStatArgs = parse_args(body.args)?;
@@ -355,7 +378,12 @@ pub async fn invoke_http(
             }
             "update_endpoint" => {
                 let args: UpdateEndpointArgs = parse_args(body.args)?;
-                to_json(endpoint::update_endpoint(app.clone(), state.clone(), args.id, args.req)?)
+                to_json(endpoint::update_endpoint(
+                    app.clone(),
+                    state.clone(),
+                    args.id,
+                    args.req,
+                )?)
             }
             "delete_endpoint" => {
                 let args: IdArg = parse_args(body.args)?;
@@ -381,6 +409,29 @@ pub async fn invoke_http(
             "query_endpoint_balance" => {
                 let args: QueryEndpointBalanceArgs = parse_args(body.args)?;
                 to_json(endpoint::query_endpoint_balance(state.clone(), args.id).await?)
+            }
+            "probe_endpoint_balance_templates" => {
+                let args: ProbeEndpointBalanceTemplatesArgs = parse_args(body.args)?;
+                to_json(
+                    endpoint::probe_endpoint_balance_templates(
+                        state.clone(),
+                        args.id,
+                        args.custom_path,
+                    )
+                    .await?,
+                )
+            }
+            "generate_balance_template_with_ai" => {
+                let args: GenerateBalanceTemplateWithAiArgs = parse_args(body.args)?;
+                to_json(
+                    endpoint::generate_balance_template_with_ai(
+                        state.clone(),
+                        args.id,
+                        args.ai_endpoint_id,
+                        args.sample,
+                    )
+                    .await?,
+                )
             }
             "fetch_endpoint_models" => {
                 let args: FetchEndpointModelsArgs = parse_args(body.args)?;
@@ -484,15 +535,26 @@ pub async fn invoke_http(
             }
             "list_profile_channels" => {
                 let args: ToolConfigAppTypeArg = parse_args(body.args)?;
-                to_json(tool_config::list_profile_channels(app.clone(), args.app_type)?)
+                to_json(tool_config::list_profile_channels(
+                    app.clone(),
+                    args.app_type,
+                )?)
             }
             "get_profile_channel" => {
                 let args: ToolConfigGetArg = parse_args(body.args)?;
-                to_json(tool_config::get_profile_channel(app.clone(), args.app_type, args.id)?)
+                to_json(tool_config::get_profile_channel(
+                    app.clone(),
+                    args.app_type,
+                    args.id,
+                )?)
             }
             "save_profile_channel" => {
                 let args: ToolConfigSaveArg = parse_args(body.args)?;
-                to_json(tool_config::save_profile_channel(app.clone(), args.app_type, args.req)?)
+                to_json(tool_config::save_profile_channel(
+                    app.clone(),
+                    args.app_type,
+                    args.req,
+                )?)
             }
             "delete_profile_channel" => {
                 let args: ToolConfigDeleteArg = parse_args(body.args)?;
@@ -501,7 +563,10 @@ pub async fn invoke_http(
             }
             "extract_source_record" => {
                 let args: ToolConfigAppTypeArg = parse_args(body.args)?;
-                to_json(tool_config::extract_source_record(app.clone(), args.app_type)?)
+                to_json(tool_config::extract_source_record(
+                    app.clone(),
+                    args.app_type,
+                )?)
             }
             "apply_profile_config" => {
                 let args: ToolConfigApplyArg = parse_args(body.args)?;
@@ -510,7 +575,10 @@ pub async fn invoke_http(
             }
             "preview_claude_settings" => {
                 let args: PreviewClaudeArgs = parse_args(body.args)?;
-                to_json(tool_config::preview_claude_settings(args.base, args.fields)?)
+                to_json(tool_config::preview_claude_settings(
+                    args.base,
+                    args.fields,
+                )?)
             }
             "parse_claude_fields" => {
                 let args: ParseClaudeArgs = parse_args(body.args)?;
@@ -526,7 +594,10 @@ pub async fn invoke_http(
             }
             "parse_codex_fields" => {
                 let args: ParseCodexArgs = parse_args(body.args)?;
-                to_json(tool_config::parse_codex_fields(args.auth, args.config_toml)?)
+                to_json(tool_config::parse_codex_fields(
+                    args.auth,
+                    args.config_toml,
+                )?)
             }
             "set_language" => {
                 let args: HashMap<String, String> = parse_args(body.args)?;
@@ -565,18 +636,16 @@ pub async fn events_sse(
     State(_proxy_state): State<std::sync::Arc<crate::modules::proxy::forward::ProxyState>>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let receiver = crate::modules::web_admin::bridge::subscribe();
-    let stream = BroadcastStream::new(receiver).filter_map(|message| {
-        match message {
-            Ok(event) => {
-                let data = json!({
-                    "event": event.event,
-                    "payload": serde_json::from_str::<Value>(&event.payload)
-                        .unwrap_or(Value::String(event.payload)),
-                });
-                Some(Ok(Event::default().data(data.to_string())))
-            }
-            Err(_) => None,
+    let stream = BroadcastStream::new(receiver).filter_map(|message| match message {
+        Ok(event) => {
+            let data = json!({
+                "event": event.event,
+                "payload": serde_json::from_str::<Value>(&event.payload)
+                    .unwrap_or(Value::String(event.payload)),
+            });
+            Some(Ok(Event::default().data(data.to_string())))
         }
+        Err(_) => None,
     });
 
     Sse::new(stream).keep_alive(KeepAlive::default())

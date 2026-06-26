@@ -42,6 +42,26 @@ export interface EndpointBalanceResult {
   raw: string;
 }
 
+export interface BalanceProbeTemplateResult {
+  templateId: string;
+  path: string;
+  success: boolean;
+  urlReachable: boolean;
+  statusCode: number | null;
+  latencyMs: number;
+  message: string;
+  sample: string | null;
+  config: BalanceQueryConfig | null;
+  balance: string | null;
+}
+
+export interface BalanceProbeResult {
+  status: "matched" | "sampleAvailable" | "allFailed";
+  results: BalanceProbeTemplateResult[];
+  matched: BalanceProbeTemplateResult | null;
+  usableSamples: BalanceProbeTemplateResult[];
+}
+
 export const BALANCE_QUERY_PRESETS: BalanceQueryConfig[] = [
   {
     enabled: true,
@@ -193,6 +213,18 @@ export const endpointApi = {
     request<EndpointTestResult>("test_endpoint", { id, model }),
   queryBalance: (id: number) =>
     request<EndpointBalanceResult>("query_endpoint_balance", { id }),
+  probeBalanceTemplates: (id: number, customPath?: string) =>
+    request<BalanceProbeResult>("probe_endpoint_balance_templates", { id, customPath }),
+  generateBalanceTemplate: (
+    id: number,
+    aiEndpointId: number,
+    sample: Pick<BalanceProbeTemplateResult, "templateId" | "path" | "statusCode" | "sample">,
+  ) =>
+    request<BalanceQueryConfig>("generate_balance_template_with_ai", {
+      id,
+      aiEndpointId,
+      sample,
+    }),
   fetchModels: (
     apiUrl: string,
     apiKey: string,
