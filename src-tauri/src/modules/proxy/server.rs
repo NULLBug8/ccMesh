@@ -24,6 +24,17 @@ use crate::modules::stats::aggregator::StatsAggregator;
 use crate::modules::storage::{config_repo, db::DbPool, endpoint_repo};
 use crate::modules::transform::thinking_rectifier::RectifierConfig;
 
+#[cfg(test)]
+fn web_admin_root_asset_path(path: &str) -> Option<String> {
+    match path {
+        "/" => Some(String::new()),
+        "/favicon.ico" => Some("favicon.ico".to_string()),
+        _ => path
+            .strip_prefix("/assets/")
+            .map(|asset_path| format!("assets/{asset_path}")),
+    }
+}
+
 /// 代理运行句柄，存于 `AppState.proxy`。持有关停信号、任务句柄与共享状态。
 pub struct ProxyHandle {
     pub port: u16,
@@ -68,6 +79,15 @@ impl ProxyHandle {
 
 fn build_router(state: Arc<ProxyState>) -> Router {
     Router::new()
+        .route("/", get(crate::commands::web_admin::static_asset_root))
+        .route(
+            "/assets/{*path}",
+            get(crate::commands::web_admin::static_asset_root_assets),
+        )
+        .route(
+            "/favicon.ico",
+            get(crate::commands::web_admin::static_asset_favicon),
+        )
         .route("/__admin/api/invoke", post(crate::commands::web_admin::invoke_http))
         .route("/__admin/events", get(crate::commands::web_admin::events_sse))
         .route("/__admin", get(crate::commands::web_admin::static_asset_root))
@@ -176,6 +196,26 @@ async fn health_route() -> Response {
 
 async fn stats_route() -> Response {
     Json(json!({})).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::web_admin_root_asset_path;
+
+    #[test]
+    fn root_path_serves_web_admin_shell() {
+        assert_eq!(web_admin_root_asset_path("/"), Some(String::new()));
+    }
+
+    #[test]
+    fn vite_assets_are_served_without_stealing_api_routes() {
+        assert_eq!(
+            web_admin_root_asset_path("/assets/index.js"),
+            Some("assets/index.js".to_string())
+        );
+        assert_eq!(web_admin_root_asset_path("/v1/messages"), None);
+        assert_eq!(web_admin_root_asset_path("/v1/chat/completions"), None);
+    }
 }
 
 /// `/v1/models`：按启用端点的配置态模型清单聚合（读库，不请求上游）。

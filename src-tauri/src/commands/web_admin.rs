@@ -579,6 +579,19 @@ pub async fn static_asset_root(
     serve_static_asset(&proxy_state, "").await
 }
 
+pub async fn static_asset_favicon(
+    State(proxy_state): State<std::sync::Arc<crate::modules::proxy::forward::ProxyState>>,
+) -> Response {
+    serve_static_asset(&proxy_state, "favicon.ico").await
+}
+
+pub async fn static_asset_root_assets(
+    State(proxy_state): State<std::sync::Arc<crate::modules::proxy::forward::ProxyState>>,
+    axum::extract::Path(path): axum::extract::Path<String>,
+) -> Response {
+    serve_static_asset(&proxy_state, &format!("assets/{path}")).await
+}
+
 pub async fn static_asset(
     State(proxy_state): State<std::sync::Arc<crate::modules::proxy::forward::ProxyState>>,
     axum::extract::Path(path): axum::extract::Path<String>,
