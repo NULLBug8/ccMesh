@@ -11,6 +11,9 @@ fn candidate_dirs(app: &AppHandle) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     if let Some(root) = workspace_root() {
         dirs.push(root.join("dist"));
+        if let Some(parent) = root.parent() {
+            dirs.push(parent.join("dist"));
+        }
     }
     if let Ok(resource_dir) = app.path().resource_dir() {
         dirs.push(resource_dir.clone());

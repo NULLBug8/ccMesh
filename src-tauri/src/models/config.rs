@@ -92,3 +92,54 @@ impl Default for AppConfig {
         }
     }
 }
+
+pub fn port_with_env_override(port: u16) -> u16 {
+    std::env::var("CCMESH_PORT")
+        .ok()
+        .and_then(|value| value.parse::<u16>().ok())
+        .unwrap_or(port)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Mutex, OnceLock};
+
+    use super::port_with_env_override;
+
+    fn with_env_port<T>(value: Option<&str>, test: impl FnOnce() -> T) -> T {
+        static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        let _guard = ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let previous = std::env::var("CCMESH_PORT").ok();
+        match value {
+            Some(value) => std::env::set_var("CCMESH_PORT", value),
+            None => std::env::remove_var("CCMESH_PORT"),
+        }
+        let result = test();
+        match previous {
+            Some(value) => std::env::set_var("CCMESH_PORT", value),
+            None => std::env::remove_var("CCMESH_PORT"),
+        }
+        result
+    }
+
+    #[test]
+    fn port_override_uses_env_when_valid() {
+        with_env_port(Some("3001"), || {
+            assert_eq!(port_with_env_override(3000), 3001);
+        });
+    }
+
+    #[test]
+    fn port_override_ignores_invalid_env() {
+        with_env_port(Some("not-a-port"), || {
+            assert_eq!(port_with_env_override(3000), 3000);
+        });
+    }
+
+    #[test]
+    fn port_override_keeps_configured_port_without_env() {
+        with_env_port(None, || {
+            assert_eq!(port_with_env_override(3000), 3000);
+        });
+    }
+}

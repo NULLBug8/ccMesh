@@ -159,6 +159,7 @@ pub fn run() {
                         .and_then(|c| modules::storage::config_repo::get_config(&c).ok())
                         .map(|cfg| cfg.port)
                         .unwrap_or_else(|| models::config::AppConfig::default().port);
+                    let port = models::config::port_with_env_override(port);
                     match modules::proxy::server::start_proxy(
                         run_handle.clone(),
                         state.db_pool.clone(),

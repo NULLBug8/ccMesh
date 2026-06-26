@@ -12,13 +12,14 @@ pub(crate) const PROXY_STATUS_EVENT: &str = "proxy-status-changed";
 /// 读取代理监听端口：唯一真相源为 app_config 键 `port`（与设置页/get_config 一致）。
 /// 历史上这里误读不存在的 `proxy_port` 键，导致启停始终回落默认端口。
 fn read_port(state: &AppState) -> u16 {
-    state
+    let port = state
         .db_pool
         .get()
         .ok()
         .and_then(|conn| config_repo::get_config(&conn).ok())
         .map(|cfg| cfg.port)
-        .unwrap_or_else(|| AppConfig::default().port)
+        .unwrap_or_else(|| AppConfig::default().port);
+    crate::models::config::port_with_env_override(port)
 }
 
 fn enabled_count(state: &AppState) -> usize {

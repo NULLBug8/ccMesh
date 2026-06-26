@@ -49,9 +49,10 @@ pub async fn set_config(
             h.stop().await;
             let port = {
                 let conn = state.db_pool.get()?;
-                config_repo::get_value(&conn, "port")?
+                let port = config_repo::get_value(&conn, "port")?
                     .and_then(|v| v.parse().ok())
-                    .unwrap_or_else(|| AppConfig::default().port)
+                    .unwrap_or_else(|| AppConfig::default().port);
+                crate::models::config::port_with_env_override(port)
             };
             let new_handle =
                 start_server(app.clone(), state.db_pool.clone(), port, state.stats.clone()).await?;

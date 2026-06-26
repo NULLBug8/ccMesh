@@ -19,7 +19,8 @@ async fn restart_proxy_if_running(app: &AppHandle, state: &AppState) -> AppResul
         handle.stop().await;
         let port = {
             let conn = state.db_pool.get()?;
-            config_repo::get_config(&conn)?.port
+            let port = config_repo::get_config(&conn)?.port;
+            crate::models::config::port_with_env_override(port)
         };
         let new_handle = start_server(
             app.clone(),
