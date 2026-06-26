@@ -94,3 +94,18 @@
 - [x] Show all failed template reasons and custom path re-probe entry when every URL fails.
 - [x] Add AI-assisted template generation only after a sanitized response sample is available.
 - [x] Verify on `http://127.0.0.1:3001/` without touching the old `3000` instance.
+
+### Task 2038.16: Balance AI Model Scope and Template Coverage
+
+**Files:**
+- Modify: `src-tauri/src/commands/endpoint.rs`
+- Modify: `src-tauri/src/commands/web_admin.rs`
+- Modify: `src/services/modules/endpoint.ts`
+- Modify: `src/pages/Endpoints/_components/EndpointForm.tsx`
+- Modify: `src/__tests__/balanceConfig.test.tsx`
+
+- [x] Change AI-assisted template generation from selecting an AI endpoint to selecting a model under the current endpoint.
+- [x] Block AI-assisted recognition when the current endpoint has no configured or pulled models.
+- [x] Validate on the backend that the selected AI model belongs to the current endpoint.
+- [x] Expand built-in balance templates and name them by relay type or specific site name, such as `newapi`, `one-api`, `sub2api`, `voapi`, `newapi-token`, and `one-hub`.
+- [x] Verify with frontend tests, Rust tests, frontend build, Rust check, and the `3001` debug instance without touching the old `3000` instance.

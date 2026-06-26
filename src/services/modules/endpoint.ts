@@ -65,7 +65,7 @@ export interface BalanceProbeResult {
 export const BALANCE_QUERY_PRESETS: BalanceQueryConfig[] = [
   {
     enabled: true,
-    templateId: "openai-credit-grants",
+    templateId: "openai",
     method: "GET",
     path: "/dashboard/billing/credit_grants",
     headers: [],
@@ -79,7 +79,7 @@ export const BALANCE_QUERY_PRESETS: BalanceQueryConfig[] = [
   },
   {
     enabled: true,
-    templateId: "newapi-user-self",
+    templateId: "newapi",
     method: "GET",
     path: "/api/user/self",
     headers: [{ name: "Authorization", value: "Bearer {{apiKey}}" }],
@@ -93,7 +93,7 @@ export const BALANCE_QUERY_PRESETS: BalanceQueryConfig[] = [
   },
   {
     enabled: true,
-    templateId: "one-api-self",
+    templateId: "one-api",
     method: "GET",
     path: "/api/user/self",
     headers: [{ name: "Authorization", value: "Bearer {{apiKey}}" }],
@@ -101,6 +101,62 @@ export const BALANCE_QUERY_PRESETS: BalanceQueryConfig[] = [
     extraction: {
       balancePath: "$.data.quota",
       currencyPath: "",
+      usedPath: "$.data.used_quota",
+      expiresAtPath: "",
+    },
+  },
+  {
+    enabled: true,
+    templateId: "sub2api",
+    method: "GET",
+    path: "/api/user/self",
+    headers: [{ name: "Authorization", value: "Bearer {{apiKey}}" }],
+    body: "",
+    extraction: {
+      balancePath: "$.data.quota",
+      currencyPath: "$.data.currency",
+      usedPath: "$.data.used_quota",
+      expiresAtPath: "$.data.expired_time",
+    },
+  },
+  {
+    enabled: true,
+    templateId: "voapi",
+    method: "GET",
+    path: "/api/user/self",
+    headers: [{ name: "Authorization", value: "Bearer {{apiKey}}" }],
+    body: "",
+    extraction: {
+      balancePath: "$.data.quota",
+      currencyPath: "",
+      usedPath: "$.data.used_quota",
+      expiresAtPath: "$.data.expired_time",
+    },
+  },
+  {
+    enabled: true,
+    templateId: "newapi-token",
+    method: "GET",
+    path: "/api/token",
+    headers: [{ name: "Authorization", value: "Bearer {{apiKey}}" }],
+    body: "",
+    extraction: {
+      balancePath: "$.data.quota",
+      currencyPath: "$.data.currency",
+      usedPath: "$.data.used_quota",
+      expiresAtPath: "",
+    },
+  },
+  {
+    enabled: true,
+    templateId: "one-hub",
+    method: "GET",
+    path: "/api/user/self",
+    headers: [{ name: "Authorization", value: "Bearer {{apiKey}}" }],
+    body: "",
+    extraction: {
+      balancePath: "$.data.quota",
+      currencyPath: "$.data.currency",
       usedPath: "$.data.used_quota",
       expiresAtPath: "",
     },
@@ -217,12 +273,12 @@ export const endpointApi = {
     request<BalanceProbeResult>("probe_endpoint_balance_templates", { id, customPath }),
   generateBalanceTemplate: (
     id: number,
-    aiEndpointId: number,
+    aiModel: string,
     sample: Pick<BalanceProbeTemplateResult, "templateId" | "path" | "statusCode" | "sample">,
   ) =>
     request<BalanceQueryConfig>("generate_balance_template_with_ai", {
       id,
-      aiEndpointId,
+      aiModel,
       sample,
     }),
   fetchModels: (

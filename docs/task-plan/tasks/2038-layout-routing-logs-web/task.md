@@ -38,3 +38,8 @@ created_at: 2026-06-24
 
 ## 2026-06-27 Balance template assistant
 - Endpoint balance tab now supports smart balance template detection: built-in template probing, automatic apply on match, explicit all-URL-failed state with custom path re-probe, and AI generation only after a sanitized response sample is available.
+
+## 2026-06-27 Balance AI model scope and templates
+- AI-assisted balance template generation now uses a model selected from the current endpoint instead of selecting a separate endpoint.
+- The backend validates that the selected model belongs to the current endpoint and rejects AI recognition when the endpoint has no models.
+- Built-in balance templates were expanded and renamed around relay types or site-specific names, including `newapi`, `one-api`, `sub2api`, `voapi`, `newapi-token`, and `one-hub`.

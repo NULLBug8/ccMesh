@@ -223,7 +223,7 @@ fn balance_query_presets() -> Vec<BalanceQueryConfig> {
     vec![
         BalanceQueryConfig {
             enabled: true,
-            template_id: "openai-credit-grants".into(),
+            template_id: "openai".into(),
             method: "GET".into(),
             path: "/dashboard/billing/credit_grants".into(),
             headers: vec![],
@@ -237,7 +237,7 @@ fn balance_query_presets() -> Vec<BalanceQueryConfig> {
         },
         BalanceQueryConfig {
             enabled: true,
-            template_id: "newapi-user-self".into(),
+            template_id: "newapi".into(),
             method: "GET".into(),
             path: "/api/user/self".into(),
             headers: vec![crate::models::endpoint::BalanceHeader {
@@ -254,7 +254,7 @@ fn balance_query_presets() -> Vec<BalanceQueryConfig> {
         },
         BalanceQueryConfig {
             enabled: true,
-            template_id: "one-api-self".into(),
+            template_id: "one-api".into(),
             method: "GET".into(),
             path: "/api/user/self".into(),
             headers: vec![crate::models::endpoint::BalanceHeader {
@@ -265,6 +265,74 @@ fn balance_query_presets() -> Vec<BalanceQueryConfig> {
             extraction: crate::models::endpoint::BalanceExtraction {
                 balance_path: "$.data.quota".into(),
                 currency_path: String::new(),
+                used_path: "$.data.used_quota".into(),
+                expires_at_path: String::new(),
+            },
+        },
+        BalanceQueryConfig {
+            enabled: true,
+            template_id: "sub2api".into(),
+            method: "GET".into(),
+            path: "/api/user/self".into(),
+            headers: vec![crate::models::endpoint::BalanceHeader {
+                name: "Authorization".into(),
+                value: "Bearer {{apiKey}}".into(),
+            }],
+            body: String::new(),
+            extraction: crate::models::endpoint::BalanceExtraction {
+                balance_path: "$.data.quota".into(),
+                currency_path: "$.data.currency".into(),
+                used_path: "$.data.used_quota".into(),
+                expires_at_path: "$.data.expired_time".into(),
+            },
+        },
+        BalanceQueryConfig {
+            enabled: true,
+            template_id: "voapi".into(),
+            method: "GET".into(),
+            path: "/api/user/self".into(),
+            headers: vec![crate::models::endpoint::BalanceHeader {
+                name: "Authorization".into(),
+                value: "Bearer {{apiKey}}".into(),
+            }],
+            body: String::new(),
+            extraction: crate::models::endpoint::BalanceExtraction {
+                balance_path: "$.data.quota".into(),
+                currency_path: String::new(),
+                used_path: "$.data.used_quota".into(),
+                expires_at_path: "$.data.expired_time".into(),
+            },
+        },
+        BalanceQueryConfig {
+            enabled: true,
+            template_id: "newapi-token".into(),
+            method: "GET".into(),
+            path: "/api/token".into(),
+            headers: vec![crate::models::endpoint::BalanceHeader {
+                name: "Authorization".into(),
+                value: "Bearer {{apiKey}}".into(),
+            }],
+            body: String::new(),
+            extraction: crate::models::endpoint::BalanceExtraction {
+                balance_path: "$.data.quota".into(),
+                currency_path: "$.data.currency".into(),
+                used_path: "$.data.used_quota".into(),
+                expires_at_path: String::new(),
+            },
+        },
+        BalanceQueryConfig {
+            enabled: true,
+            template_id: "one-hub".into(),
+            method: "GET".into(),
+            path: "/api/user/self".into(),
+            headers: vec![crate::models::endpoint::BalanceHeader {
+                name: "Authorization".into(),
+                value: "Bearer {{apiKey}}".into(),
+            }],
+            body: String::new(),
+            extraction: crate::models::endpoint::BalanceExtraction {
+                balance_path: "$.data.quota".into(),
+                currency_path: "$.data.currency".into(),
                 used_path: "$.data.used_quota".into(),
                 expires_at_path: String::new(),
             },
@@ -448,16 +516,6 @@ fn ai_chat_url(api_url: &str, format: UpstreamFormat) -> String {
                 format!("{base}/v1/messages")
             }
         }
-    }
-}
-
-fn default_ai_model(ep: &Endpoint, format: UpstreamFormat) -> String {
-    if !ep.model.trim().is_empty() {
-        ep.model.clone()
-    } else if let Some(model) = ep.models.iter().find(|m| !m.trim().is_empty()) {
-        model.clone()
-    } else {
-        format.default_model().to_string()
     }
 }
 
@@ -728,7 +786,7 @@ pub async fn probe_endpoint_balance_templates(
 pub async fn generate_balance_template_with_ai(
     state: State<'_, AppState>,
     id: i64,
-    ai_endpoint_id: i64,
+    ai_model: String,
     sample: BalanceTemplateAiSample,
 ) -> AppResult<BalanceQueryConfig> {
     if sample.sample.as_deref().unwrap_or("").trim().is_empty() {
@@ -736,28 +794,43 @@ pub async fn generate_balance_template_with_ai(
             "没有可用的余额接口返回样本，不能调用 AI 生成模板".into(),
         ));
     }
-    let (target, ai_ep) = {
+    let target = {
         let conn = state.db_pool.get()?;
-        let target = endpoint_repo::get_by_id(&conn, id)?
-            .ok_or_else(|| AppError::NotFound(format!("端点 #{id} 不存在")))?;
-        let ai_ep = endpoint_repo::get_by_id(&conn, ai_endpoint_id)?
-            .ok_or_else(|| AppError::NotFound(format!("AI 端点 #{ai_endpoint_id} 不存在")))?;
-        (target, ai_ep)
+        endpoint_repo::get_by_id(&conn, id)?
+            .ok_or_else(|| AppError::NotFound(format!("端点 #{id} 不存在")))?
     };
+    let ai_model = ai_model.trim().to_string();
+    if ai_model.is_empty() {
+        return Err(AppError::InvalidArgument("请选择此站点下的 AI 模型".into()));
+    }
+    let available_models: Vec<String> = std::iter::once(target.model.clone())
+        .chain(target.models.clone())
+        .map(|model| model.trim().to_string())
+        .filter(|model| !model.is_empty())
+        .collect();
+    if available_models.is_empty() {
+        return Err(AppError::InvalidArgument(
+            "此站点下没有模型，不能使用智能 AI 识别".into(),
+        ));
+    }
+    if !available_models.iter().any(|model| model == &ai_model) {
+        return Err(AppError::InvalidArgument(
+            "选择的 AI 模型不属于此站点".into(),
+        ));
+    }
     let (proxy_enabled, proxy_url) = {
         let conn = state.db_pool.get()?;
         let cfg = config_repo::get_config(&conn)?;
         (cfg.proxy_enabled, cfg.proxy_url)
     };
-    let want = should_use_proxy(ai_ep.use_proxy, proxy_enabled, &proxy_url);
+    let want = should_use_proxy(target.use_proxy, proxy_enabled, &proxy_url);
     let client = build_client(want, &proxy_url, Duration::from_secs(60))?;
-    let format = UpstreamFormat::from_transformer_name(&ai_ep.transformer);
-    let model = default_ai_model(&ai_ep, format);
+    let format = UpstreamFormat::from_transformer_name(&target.transformer);
     let prompt = balance_template_prompt(&target, &sample);
-    let url = ai_chat_url(&ai_ep.api_url, format);
+    let url = ai_chat_url(&target.api_url, format);
     let body = match format {
         UpstreamFormat::OpenAiChat => json!({
-            "model": model,
+            "model": ai_model,
             "temperature": 0,
             "messages": [
                 { "role": "system", "content": "Return strict JSON only." },
@@ -765,12 +838,12 @@ pub async fn generate_balance_template_with_ai(
             ]
         }),
         UpstreamFormat::OpenAiResponses => json!({
-            "model": model,
+            "model": ai_model,
             "temperature": 0,
             "input": prompt
         }),
         UpstreamFormat::Claude => json!({
-            "model": model,
+            "model": ai_model,
             "max_tokens": 1200,
             "temperature": 0,
             "messages": [
@@ -778,8 +851,8 @@ pub async fn generate_balance_template_with_ai(
             ]
         }),
     };
-    let resp = ProbeAuth::primary_for(&ai_ep.transformer)
-        .apply(client.post(url), &ai_ep.api_key)
+    let resp = ProbeAuth::primary_for(&target.transformer)
+        .apply(client.post(url), &target.api_key)
         .json(&body)
         .send()
         .await

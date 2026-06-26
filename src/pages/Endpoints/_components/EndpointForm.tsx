@@ -25,7 +25,6 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useEndpoints } from "@/hooks/useEndpoints";
 import {
   BALANCE_QUERY_PRESETS,
   DEFAULT_BALANCE_QUERY,
@@ -91,8 +90,7 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
   const [tab, setTab] = useState("form");
   const [balanceProbe, setBalanceProbe] = useState<BalanceProbeResult | null>(null);
   const [customProbePath, setCustomProbePath] = useState("");
-  const [selectedAiEndpointId, setSelectedAiEndpointId] = useState("");
-  const { data: endpoints = [] } = useEndpoints();
+  const [selectedAiModel, setSelectedAiModel] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -118,7 +116,7 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
     setTab("form");
     setBalanceProbe(null);
     setCustomProbePath("");
-    setSelectedAiEndpointId("");
+    setSelectedAiModel("");
   }, [open, editing]);
 
   const update = (patch: Partial<FormState>) =>
@@ -202,9 +200,8 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
   const generateBalance = useMutation({
     mutationFn: (sample: BalanceProbeTemplateResult) => {
       if (!editing) throw new Error("请先保存端点后再生成余额模板");
-      const aiEndpointId = Number(selectedAiEndpointId);
-      if (!aiEndpointId) throw new Error("请选择 AI 配置端点");
-      return endpointApi.generateBalanceTemplate(editing.id, aiEndpointId, {
+      if (!selectedAiModel.trim()) throw new Error("请选择此站点下的 AI 模型");
+      return endpointApi.generateBalanceTemplate(editing.id, selectedAiModel, {
         templateId: sample.templateId,
         path: sample.path,
         statusCode: sample.statusCode,
@@ -252,6 +249,9 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
   const apiUrlBase = form.apiUrl.trim().replace(/\/+$/, "");
   const hasV1Suffix = /\/v1$/i.test(apiUrlBase);
   const previewPath = PATH_BY_TRANSFORMER[form.transformer] ?? PATH_BY_TRANSFORMER.claude;
+  const aiModels = Array.from(
+    new Set([form.model, ...(form.models ?? [])].map((m) => m.trim()).filter(Boolean)),
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -547,41 +547,45 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
                   {balanceProbe.status === "sampleAvailable" ? (
                     <div className="rounded-lg border border-edge-subtle bg-background/60 p-3">
                       <p className="text-xs text-ink-mute">
-                        AI 生成模板会发送已脱敏的接口返回样本，不会发送 API Key。请选择 AI 端点后手动触发。
+                        AI 生成模板会使用当前站点自己的 API 地址、Key 和模型，请先确保此站点已经拉取或填写模型。发送给模型的样本已脱敏，不会发送 API Key。
                       </p>
-                      <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto]">
-                        <div className="flex flex-col gap-1.5">
-                          <Label htmlFor="balance-ai-endpoint">AI 配置端点</Label>
-                          <select
-                            id="balance-ai-endpoint"
-                            aria-label="AI 配置端点"
-                            className="h-9 rounded-sm border border-input bg-surface-raised px-3 text-sm"
-                            value={selectedAiEndpointId}
-                            onChange={(e) => setSelectedAiEndpointId(e.target.value)}
-                          >
-                            <option value="">请选择</option>
-                            {endpoints
-                              .filter((ep) => ep.enabled)
-                              .map((ep) => (
-                                <option key={ep.id} value={ep.id}>
-                                  {ep.name}
+                      {aiModels.length === 0 ? (
+                        <div className="mt-3 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
+                          请先在此站点下添加或拉取模型
+                        </div>
+                      ) : (
+                        <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto]">
+                          <div className="flex flex-col gap-1.5">
+                            <Label htmlFor="balance-ai-model">AI 配置模型</Label>
+                            <select
+                              id="balance-ai-model"
+                              aria-label="AI 配置模型"
+                              className="h-9 rounded-sm border border-input bg-surface-raised px-3 text-sm"
+                              value={selectedAiModel}
+                              onChange={(e) => setSelectedAiModel(e.target.value)}
+                            >
+                              <option value="">请选择</option>
+                              {aiModels.map((model) => (
+                                <option key={model} value={model}>
+                                  {model}
                                 </option>
                               ))}
-                          </select>
+                            </select>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="self-end"
+                            onClick={() => {
+                              const sample = balanceProbe.usableSamples[0];
+                              if (sample) generateBalance.mutate(sample);
+                            }}
+                            disabled={!selectedAiModel || generateBalance.isPending}
+                          >
+                            {generateBalance.isPending ? "生成中..." : "让 AI 生成模板"}
+                          </Button>
                         </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="self-end"
-                          onClick={() => {
-                            const sample = balanceProbe.usableSamples[0];
-                            if (sample) generateBalance.mutate(sample);
-                          }}
-                          disabled={!selectedAiEndpointId || generateBalance.isPending}
-                        >
-                          {generateBalance.isPending ? "生成中..." : "让 AI 生成模板"}
-                        </Button>
-                      </div>
+                      )}
                     </div>
                   ) : null}
                 </div>

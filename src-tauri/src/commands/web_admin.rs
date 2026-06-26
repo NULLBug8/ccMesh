@@ -135,7 +135,7 @@ struct ProbeEndpointBalanceTemplatesArgs {
 #[serde(rename_all = "camelCase")]
 struct GenerateBalanceTemplateWithAiArgs {
     id: i64,
-    ai_endpoint_id: i64,
+    ai_model: String,
     sample: endpoint::BalanceTemplateAiSample,
 }
 
@@ -427,7 +427,7 @@ pub async fn invoke_http(
                     endpoint::generate_balance_template_with_ai(
                         state.clone(),
                         args.id,
-                        args.ai_endpoint_id,
+                        args.ai_model,
                         args.sample,
                     )
                     .await?,
