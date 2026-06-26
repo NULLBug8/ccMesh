@@ -5,7 +5,7 @@ use serde_json::json;
 use tauri::{AppHandle, Emitter, State};
 
 use crate::error::{AppError, AppResult};
-use crate::models::endpoint::{CreateEndpointRequest, Endpoint, UpdateEndpointRequest};
+use crate::models::endpoint::{BalanceQueryConfig, CreateEndpointRequest, Endpoint, UpdateEndpointRequest};
 use crate::modules::models_probe::ProbeAuth;
 use crate::modules::proxy::client::{build_client, should_use_proxy};
 use crate::modules::storage::{config_repo, endpoint_repo};
@@ -79,6 +79,7 @@ pub fn clone_endpoint(state: State<AppState>, id: i64) -> AppResult<Endpoint> {
         models: src.models,
         active_models: src.active_models,
         model_mappings: src.model_mappings,
+        balance_query: src.balance_query,
         remark: src.remark,
     };
     endpoint_repo::create(&conn, &req)
@@ -119,6 +120,138 @@ pub struct TestResult {
     pub status: String, // available / unavailable
     pub latency_ms: u64,
     pub message: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BalanceQueryResult {
+    pub success: bool,
+    pub status: u16,
+    pub latency_ms: u64,
+    pub balance: Option<String>,
+    pub currency: Option<String>,
+    pub used: Option<String>,
+    pub expires_at: Option<String>,
+    pub message: String,
+    pub raw: String,
+}
+
+fn render_balance_template(input: &str, ep: &Endpoint) -> String {
+    input
+        .replace("{{apiKey}}", &ep.api_key)
+        .replace("{{apiUrl}}", ep.api_url.trim_end_matches('/'))
+        .replace("{{endpointName}}", &ep.name)
+}
+
+fn json_path_value(json: &serde_json::Value, path: &str) -> Option<String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let mut current = json;
+    let path = trimmed.strip_prefix("$.").or_else(|| trimmed.strip_prefix('$'))?;
+    if path.is_empty() {
+        return Some(current.to_string());
+    }
+    for segment in path.split('.') {
+        let key = segment.trim();
+        if key.is_empty() {
+            return None;
+        }
+        current = current.get(key)?;
+    }
+    match current {
+        serde_json::Value::Null => None,
+        serde_json::Value::String(value) => Some(value.clone()),
+        serde_json::Value::Number(value) => Some(value.to_string()),
+        serde_json::Value::Bool(value) => Some(value.to_string()),
+        other => Some(other.to_string()),
+    }
+}
+
+fn balance_url(ep: &Endpoint, cfg: &BalanceQueryConfig) -> String {
+    let path = render_balance_template(&cfg.path, ep);
+    if path.starts_with("http://") || path.starts_with("https://") {
+        path
+    } else {
+        format!("{}{}", ep.api_url.trim_end_matches('/'), path)
+    }
+}
+
+#[tauri::command]
+pub async fn query_endpoint_balance(
+    state: State<'_, AppState>,
+    id: i64,
+) -> AppResult<BalanceQueryResult> {
+    let ep = {
+        let conn = state.db_pool.get()?;
+        endpoint_repo::get_by_id(&conn, id)?
+            .ok_or_else(|| AppError::NotFound(format!("端点 #{id} 不存在")))?
+    };
+    let cfg = ep.balance_query.clone();
+    if !cfg.enabled {
+        return Err(AppError::InvalidArgument("该端点未启用余额查询模板".into()));
+    }
+
+    let (proxy_enabled, proxy_url) = {
+        let conn = state.db_pool.get()?;
+        let cfg = config_repo::get_config(&conn)?;
+        (cfg.proxy_enabled, cfg.proxy_url)
+    };
+    let want = should_use_proxy(ep.use_proxy, proxy_enabled, &proxy_url);
+    let client = build_client(want, &proxy_url, Duration::from_secs(30))?;
+    let method = reqwest::Method::from_bytes(cfg.method.trim().as_bytes())
+        .unwrap_or(reqwest::Method::GET);
+    let url = balance_url(&ep, &cfg);
+    let mut req = client.request(method, &url);
+    for header in &cfg.headers {
+        let name = header.name.trim();
+        if name.is_empty() {
+            continue;
+        }
+        req = req.header(name, render_balance_template(&header.value, &ep));
+    }
+    if !cfg.body.trim().is_empty() {
+        req = req.body(render_balance_template(&cfg.body, &ep));
+    }
+
+    let start = Instant::now();
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| AppError::Proxy(format!("余额查询失败: {e}")))?;
+    let latency_ms = start.elapsed().as_millis() as u64;
+    let status = resp.status().as_u16();
+    let raw = resp
+        .text()
+        .await
+        .map_err(|e| AppError::Proxy(format!("读取余额响应失败: {e}")))?;
+    let json: serde_json::Value = serde_json::from_str(&raw).unwrap_or(serde_json::Value::Null);
+    let extraction = &cfg.extraction;
+    let balance = json_path_value(&json, &extraction.balance_path);
+    let currency = json_path_value(&json, &extraction.currency_path);
+    let used = json_path_value(&json, &extraction.used_path);
+    let expires_at = json_path_value(&json, &extraction.expires_at_path);
+    let success = status < 400 && balance.is_some();
+    let message = if success {
+        "余额查询成功".to_string()
+    } else if status >= 400 {
+        format!("余额接口返回 HTTP {status}")
+    } else {
+        "余额响应中未找到余额字段".to_string()
+    };
+
+    Ok(BalanceQueryResult {
+        success,
+        status,
+        latency_ms,
+        balance,
+        currency,
+        used,
+        expires_at,
+        message,
+        raw,
+    })
 }
 
 /// 探测端点连通性：发送最小请求，200 即可用；持久化 test_status。

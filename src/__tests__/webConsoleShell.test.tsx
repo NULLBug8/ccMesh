@@ -38,6 +38,10 @@ vi.mock("@/pages/Rules", () => ({
   Rules: () => <div>Rules page</div>,
 }));
 
+vi.mock("@/pages/Balances", () => ({
+  Balances: () => <div>Balances page</div>,
+}));
+
 vi.mock("@/pages/Statistics", () => ({
   Statistics: () => <div>Statistics page</div>,
 }));
@@ -111,6 +115,9 @@ describe("web console shell", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Rules" }));
     expect(await screen.findByText("Rules page")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Balances" }));
+    expect(await screen.findByText("Balances page")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Logs" }));
     expect(await screen.findByText("Logs page")).toBeInTheDocument();

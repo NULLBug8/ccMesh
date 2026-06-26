@@ -192,6 +192,7 @@ mod tests {
             models: Vec::new(),
             active_models: Vec::new(),
             model_mappings: Vec::new(),
+            balance_query: Default::default(),
             remark: "".into(),
             sort_order: 0,
             test_status: "unknown".into(),
@@ -447,4 +448,80 @@ mod tests {
             Some("mapped-to")
         );
     }
+
+    #[test]
+    fn order_candidates_site_first_keeps_native_and_mapping_on_same_site_adjacent() {
+        let eps = vec![
+            ep_mapped("a", &["gpt-5.5"], &[("gpt-5.5", "claude-opus-4-8")]),
+            ep_with_models("b", &["gpt-5.5"]),
+            ep_mapped("c", &["claude-opus-4-8"], &[("gpt-5.5", "claude-opus-4-8")]),
+        ];
+
+        let got = order_candidates_for_model_mapping(&eps, Some("gpt-5.5"), "site-first");
+        let names: Vec<&str> = got.iter().map(|e| e.name.as_str()).collect();
+
+        assert_eq!(names, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn order_candidates_global_native_first_moves_native_matches_before_mapped_only_sites() {
+        let eps = vec![
+            ep_mapped("a", &["claude-opus-4-8"], &[("gpt-5.5", "claude-opus-4-8")]),
+            ep_with_models("b", &["gpt-5.5"]),
+            ep_mapped("c", &["gpt-5.5"], &[("gpt-5.5", "claude-opus-4-8")]),
+        ];
+
+        let got =
+            order_candidates_for_model_mapping(&eps, Some("gpt-5.5"), "global-native-first");
+        let names: Vec<&str> = got.iter().map(|e| e.name.as_str()).collect();
+
+        assert_eq!(names, vec!["b", "c", "a"]);
+    }
+}
+
+fn has_native_model(ep: &Endpoint, model: &str) -> bool {
+    let needle = model.trim();
+    if needle.is_empty() {
+        return false;
+    }
+    let base: Vec<String> = if !ep.model.trim().is_empty() {
+        vec![ep.model.clone()]
+    } else if !ep.active_models.is_empty() {
+        ep.active_models.clone()
+    } else {
+        ep.models.clone()
+    };
+    base.iter().any(|m| m.trim().eq_ignore_ascii_case(needle))
+}
+
+fn has_mapping_model(ep: &Endpoint, model: &str) -> bool {
+    ep.model_mappings
+        .iter()
+        .any(|mm| mm.from.trim().eq_ignore_ascii_case(model.trim()))
+}
+
+pub fn order_candidates_for_model_mapping(
+    enabled: &[Endpoint],
+    model: Option<&str>,
+    strategy: &str,
+) -> Vec<Endpoint> {
+    let Some(model) = model.map(str::trim).filter(|m| !m.is_empty()) else {
+        return enabled.to_vec();
+    };
+    if strategy != "global-native-first" {
+        return enabled.to_vec();
+    }
+    let mut native = Vec::new();
+    let mut mapped = Vec::new();
+    let mut rest = Vec::new();
+    for ep in enabled {
+        if has_native_model(ep, model) {
+            native.push(ep.clone());
+        } else if has_mapping_model(ep, model) {
+            mapped.push(ep.clone());
+        } else {
+            rest.push(ep.clone());
+        }
+    }
+    native.into_iter().chain(mapped).chain(rest).collect()
 }

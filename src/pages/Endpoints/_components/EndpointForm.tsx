@@ -25,7 +25,13 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { endpointApi, type Endpoint } from "@/services/modules/endpoint";
+import {
+  BALANCE_QUERY_PRESETS,
+  DEFAULT_BALANCE_QUERY,
+  endpointApi,
+  type BalanceQueryConfig,
+  type Endpoint,
+} from "@/services/modules/endpoint";
 
 const JsonEditor = lazy(() => import("@/components/common/JsonEditor"));
 
@@ -39,6 +45,7 @@ interface FormState {
   /** 点亮（对外公布）的模型子集：models 的子集。空数组=全部公布（兼容旧端点）。 */
   activeModels: string[];
   useProxy: boolean;
+  balanceQuery: BalanceQueryConfig;
   remark: string;
 }
 
@@ -51,6 +58,7 @@ const EMPTY: FormState = {
   models: [],
   activeModels: [],
   useProxy: false,
+  balanceQuery: DEFAULT_BALANCE_QUERY,
   remark: "",
 };
 
@@ -91,6 +99,7 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
           models: editing.models ?? [],
           activeModels: editing.activeModels ?? [],
           useProxy: editing.useProxy ?? false,
+          balanceQuery: editing.balanceQuery ?? DEFAULT_BALANCE_QUERY,
           remark: editing.remark,
         }
       : EMPTY;
@@ -111,6 +120,15 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
 
   const set = (k: keyof FormState, v: string) =>
     update({ [k]: v } as Partial<FormState>);
+  const updateBalance = (patch: Partial<BalanceQueryConfig>) =>
+    update({ balanceQuery: { ...form.balanceQuery, ...patch } });
+  const updateExtraction = (patch: Partial<BalanceQueryConfig["extraction"]>) =>
+    updateBalance({
+      extraction: {
+        ...form.balanceQuery.extraction,
+        ...patch,
+      },
+    });
 
   const addModel = () => {
     const m = modelInput.trim();
@@ -197,6 +215,7 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
         <Tabs value={tab} onValueChange={setTab} className="min-w-0 overflow-hidden">
           <TabsList>
             <TabsTrigger value="form">表单</TabsTrigger>
+            <TabsTrigger value="balance">余额</TabsTrigger>
             <TabsTrigger value="json">JSON</TabsTrigger>
           </TabsList>
 
@@ -373,6 +392,120 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
                 checked={form.useProxy}
                 onCheckedChange={(v) => update({ useProxy: v })}
               />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="balance" className="flex flex-col gap-3">
+            <div className="flex items-center justify-between rounded-lg border border-edge-subtle bg-background/70 px-4 py-3">
+              <div>
+                <div className="text-sm font-medium">启用余额查询</div>
+                <p className="text-xs text-ink-mute">在端点卡片和余额查询页显示查询入口。</p>
+              </div>
+              <Switch
+                checked={form.balanceQuery.enabled}
+                onCheckedChange={(enabled) => updateBalance({ enabled })}
+                aria-label="balance-query-enabled"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label>常见模板</Label>
+              <Select
+                value={form.balanceQuery.templateId}
+                onValueChange={(templateId) => {
+                  const preset = BALANCE_QUERY_PRESETS.find((item) => item.templateId === templateId);
+                  update({
+                    balanceQuery: preset
+                      ? { ...preset, enabled: form.balanceQuery.enabled }
+                      : { ...form.balanceQuery, templateId },
+                  });
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {BALANCE_QUERY_PRESETS.map((preset) => (
+                    <SelectItem key={preset.templateId} value={preset.templateId}>
+                      {preset.templateId}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="custom">custom</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-[140px_1fr]">
+              <div className="flex flex-col gap-1.5">
+                <Label>Method</Label>
+                <Select
+                  value={form.balanceQuery.method}
+                  onValueChange={(method) => updateBalance({ method })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="GET">GET</SelectItem>
+                    <SelectItem value="POST">POST</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>查询路径</Label>
+                <Input
+                  value={form.balanceQuery.path}
+                  placeholder="/api/user/self"
+                  onChange={(e) => updateBalance({ path: e.target.value, templateId: "custom" })}
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="flex flex-col gap-1.5">
+                <Label>余额 JSON Path</Label>
+                <Input
+                  value={form.balanceQuery.extraction.balancePath}
+                  placeholder="$.data.quota"
+                  onChange={(e) => updateExtraction({ balancePath: e.target.value })}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>货币 JSON Path</Label>
+                <Input
+                  value={form.balanceQuery.extraction.currencyPath}
+                  placeholder="$.data.currency"
+                  onChange={(e) => updateExtraction({ currencyPath: e.target.value })}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>已用 JSON Path</Label>
+                <Input
+                  value={form.balanceQuery.extraction.usedPath}
+                  placeholder="$.data.used_quota"
+                  onChange={(e) => updateExtraction({ usedPath: e.target.value })}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>过期时间 JSON Path</Label>
+                <Input
+                  value={form.balanceQuery.extraction.expiresAtPath}
+                  placeholder="$.data.expires_at"
+                  onChange={(e) => updateExtraction({ expiresAtPath: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label>请求体模板</Label>
+              <Input
+                value={form.balanceQuery.body}
+                placeholder='{"user":"{{endpointName}}"}'
+                onChange={(e) => updateBalance({ body: e.target.value, templateId: "custom" })}
+              />
+              <p className="text-xs text-ink-mute">
+                可使用 {"{{apiKey}}"}、{"{{apiUrl}}"}、{"{{endpointName}}"}；本阶段不执行 JS。
+              </p>
             </div>
           </TabsContent>
 

@@ -8,6 +8,7 @@ export type ViewId =
   | "dashboard"
   | "endpoints"
   | "configProfiles"
+  | "balances"
   | "rules"
   | "statistics"
   | "sync"

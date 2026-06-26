@@ -161,6 +161,8 @@ pub async fn start_proxy(
         )),
         rectifier_config: RectifierConfig::from_rules(&cfg.rules.degradation),
         reasoning_effort_fallback: cfg.rules.degradation.reasoning_effort_fallback,
+        model_mapping_strategy: cfg.rules.routing.model_mapping_strategy,
+        max_retries: cfg.rules.routing.max_retries,
     });
 
     let app = build_router(state.clone());

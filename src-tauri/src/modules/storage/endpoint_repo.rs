@@ -3,7 +3,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 use crate::error::{AppError, AppResult};
 use crate::models::endpoint::{CreateEndpointRequest, Endpoint, UpdateEndpointRequest};
 
-const COLS: &str = "id, name, api_url, api_key, auth_mode, enabled, use_proxy, transformer, model, models, active_models, model_mappings, remark, sort_order, test_status, created_at, updated_at";
+const COLS: &str = "id, name, api_url, api_key, auth_mode, enabled, use_proxy, transformer, model, models, active_models, model_mappings, balance_query, remark, sort_order, test_status, created_at, updated_at";
 
 fn row_to_endpoint(row: &Row) -> rusqlite::Result<Endpoint> {
     Ok(Endpoint {
@@ -26,6 +26,10 @@ fn row_to_endpoint(row: &Row) -> rusqlite::Result<Endpoint> {
         },
         model_mappings: {
             let s: String = row.get("model_mappings")?;
+            serde_json::from_str(&s).unwrap_or_default()
+        },
+        balance_query: {
+            let s: String = row.get("balance_query")?;
             serde_json::from_str(&s).unwrap_or_default()
         },
         remark: row.get("remark")?,
@@ -98,8 +102,8 @@ pub fn create(conn: &Connection, req: &CreateEndpointRequest) -> AppResult<Endpo
     let active = sanitize_active(&req.models, &req.active_models);
     conn.execute(
         "INSERT INTO endpoints
-            (name, api_url, api_key, auth_mode, enabled, use_proxy, transformer, model, models, active_models, model_mappings, remark, sort_order)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            (name, api_url, api_key, auth_mode, enabled, use_proxy, transformer, model, models, active_models, model_mappings, balance_query, remark, sort_order)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         params![
             req.name,
             req.api_url,
@@ -112,6 +116,7 @@ pub fn create(conn: &Connection, req: &CreateEndpointRequest) -> AppResult<Endpo
             serde_json::to_string(&req.models).unwrap_or_else(|_| "[]".into()),
             serde_json::to_string(&active).unwrap_or_else(|_| "[]".into()),
             serde_json::to_string(&req.model_mappings).unwrap_or_else(|_| "[]".into()),
+            serde_json::to_string(&req.balance_query).unwrap_or_else(|_| "{}".into()),
             req.remark,
             next_order,
         ],
@@ -163,6 +168,9 @@ pub fn update(conn: &Connection, id: i64, req: &UpdateEndpointRequest) -> AppRes
     if let Some(ref v) = req.model_mappings {
         e.model_mappings = v.clone();
     }
+    if let Some(ref v) = req.balance_query {
+        e.balance_query = v.clone();
+    }
     if let Some(ref v) = req.remark {
         e.remark = v.clone();
     }
@@ -173,8 +181,8 @@ pub fn update(conn: &Connection, id: i64, req: &UpdateEndpointRequest) -> AppRes
         "UPDATE endpoints SET
             name = ?1, api_url = ?2, api_key = ?3, auth_mode = ?4, enabled = ?5,
             use_proxy = ?6, transformer = ?7, model = ?8, models = ?9, active_models = ?10,
-            model_mappings = ?11, remark = ?12, updated_at = datetime('now')
-         WHERE id = ?13",
+            model_mappings = ?11, balance_query = ?12, remark = ?13, updated_at = datetime('now')
+         WHERE id = ?14",
         params![
             e.name,
             e.api_url,
@@ -187,6 +195,7 @@ pub fn update(conn: &Connection, id: i64, req: &UpdateEndpointRequest) -> AppRes
             serde_json::to_string(&e.models).unwrap_or_else(|_| "[]".into()),
             serde_json::to_string(&e.active_models).unwrap_or_else(|_| "[]".into()),
             serde_json::to_string(&e.model_mappings).unwrap_or_else(|_| "[]".into()),
+            serde_json::to_string(&e.balance_query).unwrap_or_else(|_| "{}".into()),
             e.remark,
             id,
         ],
@@ -248,6 +257,7 @@ mod tests {
             models: Vec::new(),
             active_models: Vec::new(),
             model_mappings: Vec::new(),
+            balance_query: Default::default(),
             remark: String::new(),
         }
     }
@@ -440,5 +450,53 @@ mod tests {
         .unwrap();
         let got = get_by_id(&c, created.id).unwrap().unwrap();
         assert_eq!(got.model_mappings.len(), 2);
+    }
+
+    #[test]
+    fn balance_query_roundtrip() {
+        use crate::models::endpoint::{BalanceExtraction, BalanceHeader, BalanceQueryConfig};
+
+        let c = db();
+        let mut r = req("balance");
+        r.balance_query = BalanceQueryConfig {
+            enabled: true,
+            template_id: "custom".into(),
+            method: "GET".into(),
+            path: "/dashboard/billing/credit_grants".into(),
+            headers: vec![BalanceHeader {
+                name: "X-Custom".into(),
+                value: "{{apiKey}}".into(),
+            }],
+            body: String::new(),
+            extraction: BalanceExtraction {
+                balance_path: "$.total_available".into(),
+                currency_path: "$.currency".into(),
+                used_path: "$.total_used".into(),
+                expires_at_path: "$.expires_at".into(),
+            },
+        };
+
+        let created = create(&c, &r).unwrap();
+        assert!(created.balance_query.enabled);
+        assert_eq!(created.balance_query.path, "/dashboard/billing/credit_grants");
+        assert_eq!(created.balance_query.extraction.balance_path, "$.total_available");
+
+        update(
+            &c,
+            created.id,
+            &UpdateEndpointRequest {
+                balance_query: Some(BalanceQueryConfig {
+                    enabled: false,
+                    path: "/v1/dashboard/billing/subscription".into(),
+                    ..created.balance_query.clone()
+                }),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let got = get_by_id(&c, created.id).unwrap().unwrap();
+        assert!(!got.balance_query.enabled);
+        assert_eq!(got.balance_query.path, "/v1/dashboard/billing/subscription");
     }
 }

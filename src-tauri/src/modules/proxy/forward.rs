@@ -100,6 +100,8 @@ pub struct ProxyState {
     /// thinking 签名整流器配置（反应式：上游签名错误时清洗 thinking/signature 后透明重试）。
     pub rectifier_config: RectifierConfig,
     pub reasoning_effort_fallback: bool,
+    pub model_mapping_strategy: String,
+    pub max_retries: u32,
 }
 
 impl ProxyState {
@@ -480,6 +482,11 @@ pub async fn handle_proxy(
         }
 
         let filtered = resolver::filter_by_model(&enabled, model.as_deref());
+        let filtered = resolver::order_candidates_for_model_mapping(
+            &filtered,
+            model.as_deref(),
+            &st.model_mapping_strategy,
+        );
 
         // 模型过滤后日志：汇总过滤结果
         if let Some(m) = model.as_deref() {
@@ -599,7 +606,9 @@ pub async fn handle_proxy(
         let msg = empty_candidates_message(model.as_deref(), breaker_exhausted);
         return json_error(StatusCode::BAD_GATEWAY, &msg);
     }
-    let max = if use_specific {
+    let max = if st.max_retries > 0 {
+        st.max_retries as usize
+    } else if use_specific {
         3
     } else {
         rotation::max_retries(n).max(1)

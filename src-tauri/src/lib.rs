@@ -32,16 +32,18 @@ pub fn run() {
     // 唤起并聚焦已有主窗口，避免多开造成端口冲突。Windows/macOS/Linux 通用。
     #[cfg(desktop)]
     {
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(w) = app.get_webview_window("main") {
-                let _ = w.show();
-                let _ = w.unminimize();
-                let _ = w.set_focus();
-                // Linux：show() 后补一次窗口交互重激活，修复 WebKitGTK 整窗点击无响应。
-                #[cfg(target_os = "linux")]
-                linux_fix::nudge_main_window(w.clone());
-            }
-        }));
+        if std::env::var_os("CCMESH_ALLOW_MULTI_INSTANCE").is_none() {
+            builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.unminimize();
+                    let _ = w.set_focus();
+                    // Linux：show() 后补一次窗口交互重激活，修复 WebKitGTK 整窗点击无响应。
+                    #[cfg(target_os = "linux")]
+                    linux_fix::nudge_main_window(w.clone());
+                }
+            }));
+        }
     }
 
     builder
@@ -214,6 +216,7 @@ pub fn run() {
             commands::endpoint::reorder_endpoints,
             commands::endpoint::clone_endpoint,
             commands::endpoint::test_endpoint,
+            commands::endpoint::query_endpoint_balance,
             commands::endpoint::test_proxy,
             commands::models::get_models,
             commands::models::fetch_endpoint_models,

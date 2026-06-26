@@ -8,6 +8,87 @@ export interface ModelMapping {
   to: string;
 }
 
+export interface BalanceHeader {
+  name: string;
+  value: string;
+}
+
+export interface BalanceExtraction {
+  balancePath: string;
+  currencyPath: string;
+  usedPath: string;
+  expiresAtPath: string;
+}
+
+export interface BalanceQueryConfig {
+  enabled: boolean;
+  templateId: string;
+  method: string;
+  path: string;
+  headers: BalanceHeader[];
+  body: string;
+  extraction: BalanceExtraction;
+}
+
+export interface EndpointBalanceResult {
+  success: boolean;
+  status: number;
+  latencyMs: number;
+  balance: string | null;
+  currency: string | null;
+  used: string | null;
+  expiresAt: string | null;
+  message: string;
+  raw: string;
+}
+
+export const BALANCE_QUERY_PRESETS: BalanceQueryConfig[] = [
+  {
+    enabled: true,
+    templateId: "openai-credit-grants",
+    method: "GET",
+    path: "/dashboard/billing/credit_grants",
+    headers: [],
+    body: "",
+    extraction: {
+      balancePath: "$.total_available",
+      currencyPath: "$.currency",
+      usedPath: "$.total_used",
+      expiresAtPath: "$.expires_at",
+    },
+  },
+  {
+    enabled: true,
+    templateId: "newapi-user-self",
+    method: "GET",
+    path: "/api/user/self",
+    headers: [{ name: "Authorization", value: "Bearer {{apiKey}}" }],
+    body: "",
+    extraction: {
+      balancePath: "$.data.quota",
+      currencyPath: "$.data.currency",
+      usedPath: "$.data.used_quota",
+      expiresAtPath: "",
+    },
+  },
+  {
+    enabled: true,
+    templateId: "one-api-self",
+    method: "GET",
+    path: "/api/user/self",
+    headers: [{ name: "Authorization", value: "Bearer {{apiKey}}" }],
+    body: "",
+    extraction: {
+      balancePath: "$.data.quota",
+      currencyPath: "",
+      usedPath: "$.data.used_quota",
+      expiresAtPath: "",
+    },
+  },
+];
+
+export const DEFAULT_BALANCE_QUERY = BALANCE_QUERY_PRESETS[0];
+
 export interface Endpoint {
   id: number;
   name: string;
@@ -22,6 +103,7 @@ export interface Endpoint {
   /** 点亮（对外公布）的模型子集：`models` 的子集。空数组=全部公布（向后兼容旧端点）。 */
   activeModels: string[];
   modelMappings: ModelMapping[];
+  balanceQuery: BalanceQueryConfig;
   remark: string;
   sortOrder: number;
   testStatus: string;
@@ -41,6 +123,7 @@ export interface CreateEndpointRequest {
   models?: string[];
   activeModels?: string[];
   modelMappings?: ModelMapping[];
+  balanceQuery?: BalanceQueryConfig;
   remark?: string;
 }
 
@@ -108,6 +191,8 @@ export const endpointApi = {
   clone: (id: number) => request<Endpoint>("clone_endpoint", { id }),
   test: (id: number, model?: string) =>
     request<EndpointTestResult>("test_endpoint", { id, model }),
+  queryBalance: (id: number) =>
+    request<EndpointBalanceResult>("query_endpoint_balance", { id }),
   fetchModels: (
     apiUrl: string,
     apiKey: string,

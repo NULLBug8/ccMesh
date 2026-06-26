@@ -371,6 +371,7 @@ mod tests {
             models: Vec::new(),
             active_models: Vec::new(),
             model_mappings: Vec::new(),
+            balance_query: Default::default(),
             remark: "".into(),
             sort_order: 0,
             test_status: "unknown".into(),

@@ -120,6 +120,11 @@ struct TestEndpointArgs {
 }
 
 #[derive(Deserialize)]
+struct QueryEndpointBalanceArgs {
+    id: i64,
+}
+
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct FetchEndpointModelsArgs {
     api_url: String,
@@ -372,6 +377,10 @@ pub async fn invoke_http(
                     endpoint::test_endpoint(app.clone(), state.clone(), args.id, args.model)
                         .await?,
                 )
+            }
+            "query_endpoint_balance" => {
+                let args: QueryEndpointBalanceArgs = parse_args(body.args)?;
+                to_json(endpoint::query_endpoint_balance(state.clone(), args.id).await?)
             }
             "fetch_endpoint_models" => {
                 let args: FetchEndpointModelsArgs = parse_args(body.args)?;

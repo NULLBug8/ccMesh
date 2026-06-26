@@ -8,6 +8,59 @@ pub struct ModelMapping {
     pub to: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct BalanceExtraction {
+    pub balance_path: String,
+    pub currency_path: String,
+    pub used_path: String,
+    pub expires_at_path: String,
+}
+
+impl Default for BalanceExtraction {
+    fn default() -> Self {
+        Self {
+            balance_path: "$.balance".into(),
+            currency_path: "$.currency".into(),
+            used_path: String::new(),
+            expires_at_path: String::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BalanceHeader {
+    pub name: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct BalanceQueryConfig {
+    pub enabled: bool,
+    pub template_id: String,
+    pub method: String,
+    pub path: String,
+    pub headers: Vec<BalanceHeader>,
+    pub body: String,
+    pub extraction: BalanceExtraction,
+}
+
+impl Default for BalanceQueryConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            template_id: "openai-credit-grants".into(),
+            method: "GET".into(),
+            path: "/dashboard/billing/credit_grants".into(),
+            headers: Vec::new(),
+            body: String::new(),
+            extraction: BalanceExtraction::default(),
+        }
+    }
+}
+
 /// 端点（上游 API 提供方）。对应 `endpoints` 表。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -32,6 +85,8 @@ pub struct Endpoint {
     pub active_models: Vec<String>,
     /// 入站→出站模型映射。客户端用入站名请求 → 路由匹配 + 改写为出站名转发上游。
     pub model_mappings: Vec<ModelMapping>,
+    /// 中转站余额查询模板配置。默认关闭，用户可在端点页或余额页自定义。
+    pub balance_query: BalanceQueryConfig,
     pub remark: String,
     pub sort_order: i64,
     /// 测试状态：unknown / available / unavailable。
@@ -64,6 +119,8 @@ pub struct CreateEndpointRequest {
     #[serde(default)]
     pub model_mappings: Vec<ModelMapping>,
     #[serde(default)]
+    pub balance_query: BalanceQueryConfig,
+    #[serde(default)]
     pub remark: String,
 }
 
@@ -81,6 +138,7 @@ pub struct UpdateEndpointRequest {
     pub models: Option<Vec<String>>,
     pub active_models: Option<Vec<String>>,
     pub model_mappings: Option<Vec<ModelMapping>>,
+    pub balance_query: Option<BalanceQueryConfig>,
     pub remark: Option<String>,
 }
 

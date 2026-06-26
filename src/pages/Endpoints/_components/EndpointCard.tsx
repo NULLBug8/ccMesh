@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ActivityIcon,
   CopyIcon,
+  CreditCardIcon,
   GripVerticalIcon,
   PencilIcon,
   Trash2Icon,
@@ -118,6 +119,17 @@ export function EndpointCard({
     },
     onError: (e) => toast.error(errMsg(e)),
   });
+  const balance = useMutation({
+    mutationFn: () => endpointApi.queryBalance(endpoint.id),
+    onSuccess: (r) => {
+      r.success
+        ? toast.success(
+            `${endpoint.name}：余额 ${r.balance ?? "-"}${r.currency ? ` ${r.currency}` : ""}`,
+          )
+        : toast.error(`${endpoint.name}：${r.message}`);
+    },
+    onError: (e) => toast.error(errMsg(e)),
+  });
   const clone = useMutation({
     mutationFn: () => endpointApi.clone(endpoint.id),
     onSuccess: () => {
@@ -224,6 +236,13 @@ export function EndpointCard({
   const actions = (
     <div className="flex shrink-0 gap-0.5">
       {testButton}
+      <IconAction
+        label="查询余额"
+        onClick={() => balance.mutate()}
+        disabled={!endpoint.balanceQuery?.enabled || balance.isPending}
+      >
+        <CreditCardIcon className="size-4" />
+      </IconAction>
       <IconAction label="模型映射" onClick={() => setMapOpen(true)}>
         <WaypointsIcon className="size-4" />
       </IconAction>

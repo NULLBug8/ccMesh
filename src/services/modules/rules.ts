@@ -4,6 +4,9 @@ export interface RoutingRules {
   strategy: string;
   modelAffinity: boolean;
   headerAffinity: boolean;
+  modelMappingStrategy: "site-first" | "global-native-first";
+  maxRetries: number;
+  requestTimeoutSeconds: number;
 }
 
 export interface CircuitBreakerRules {
@@ -12,12 +15,15 @@ export interface CircuitBreakerRules {
   timeoutSeconds: number;
   errorRateThreshold: number;
   minRequests: number;
+  failureStatusCodes: number[];
 }
 
 export interface DegradationRules {
   enabled: boolean;
   reasoningEffortFallback: boolean;
   requestThinkingSignature: boolean;
+  retryWithoutStream: boolean;
+  fallbackTemperature: number;
 }
 
 export interface RulesConfig {
