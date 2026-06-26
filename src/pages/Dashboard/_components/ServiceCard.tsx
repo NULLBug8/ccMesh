@@ -77,9 +77,9 @@ export function ServiceCard() {
   };
 
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+    <div className="grid min-w-0 grid-cols-1 gap-4 2xl:grid-cols-3">
       {/* 左 2/3：启用端点列表 */}
-      <Card className="md:col-span-2">
+      <Card className="min-w-0 2xl:col-span-2">
         <CardContent className="flex flex-col gap-3 px-5 py-4">
           <div className="flex flex-col gap-1.5">
             <span className="text-xs text-ink-secondary">
@@ -88,7 +88,7 @@ export function ServiceCard() {
             {endpoints.length === 0 ? (
               <span className="text-sm text-ink-mute">暂无启用端点</span>
             ) : (
-              <ul className="flex flex-wrap gap-2">
+              <ul className="flex min-w-0 flex-wrap gap-2">
                 {endpoints.map((e) => {
                   const active = e.name === current;
                   const h = healthByName.get(e.name);
@@ -107,13 +107,13 @@ export function ServiceCard() {
                     <li
                       key={e.name}
                       title={title}
-                      className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm"
+                      className="flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-sm"
                     >
                       <StatusDot status={dot} pulse={active && running} />
                       {active ? (
                         <Badge variant="info">{e.name}</Badge>
                       ) : (
-                        <span>{e.name}</span>
+                        <span className="min-w-0 truncate">{e.name}</span>
                       )}
                     </li>
                   );
@@ -125,7 +125,7 @@ export function ServiceCard() {
       </Card>
 
       {/* 右 1/3：本地代理信息 + 开关 + 端口跳设置 + 雪山日落场景 */}
-      <Card className="relative overflow-hidden md:col-span-1">
+      <Card className="relative min-w-0 overflow-hidden 2xl:col-span-1">
         <ProxyScene running={running} dark={dark} />
         {/* 文字可读性遮罩：亮色用白雾托底、暗色用深色压底 */}
         <div

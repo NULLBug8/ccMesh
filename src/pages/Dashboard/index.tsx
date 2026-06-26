@@ -19,12 +19,13 @@ export function Dashboard() {
     (today?.cacheReadTokens ?? 0);
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-6">
+    <div className="flex w-full min-w-0 flex-col gap-6">
       <PageLayoutEditor view="dashboard" definition={dashboardLayoutDefinition} />
       <PageSectionHost
         layout={layout}
         registry={{
           hero: {
+            className: "xl:col-span-12",
             title: "页面标题",
             render: () => (
               <header className="flex flex-col gap-1">
@@ -36,13 +37,15 @@ export function Dashboard() {
             ),
           },
           service: {
+            className: "min-w-0 xl:col-span-7",
             title: "服务状态",
             render: () => <ServiceCard />,
           },
           stats: {
+            className: "min-w-0 xl:col-span-5",
             title: "今日指标",
             render: () => (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
                 <StatCard label="请求数（今日）" value={today?.requests ?? 0} />
                 <StatCard label="失败数（今日）" value={today?.errors ?? 0} />
                 <StatCard
@@ -55,6 +58,7 @@ export function Dashboard() {
             ),
           },
           requests: {
+            className: "min-w-0 xl:col-span-12",
             title: "实时请求",
             render: () => <RequestMonitor mode="live" pageSize={10} />,
           },
