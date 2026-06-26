@@ -14,9 +14,11 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::models::endpoint::Endpoint;
+use crate::models::stats::{RequestTrace, RequestTraceStage};
 use crate::modules::proxy::circuit_breaker::{self, BreakerRegistry};
 use crate::modules::proxy::resolver;
 use crate::modules::proxy::rotation::{self, Rotation};
+use crate::modules::proxy::trace_capture;
 use crate::modules::stats::aggregator::{RequestRecord, StatsAggregator};
 use crate::modules::storage::{db::DbPool, endpoint_repo};
 use crate::modules::transform::claude_openai::openai_response_to_claude;
@@ -78,6 +80,7 @@ impl ActiveRequests {
 
 /// 代理运行期共享状态，注入 axum 处理器。
 pub struct ProxyState {
+    pub app: tauri::AppHandle,
     pub db_pool: DbPool,
     pub client: reqwest::Client,
     /// 全局代理 client（配置了 proxy_url 时构建；端点 use_proxy 为真时使用）。
@@ -124,6 +127,7 @@ struct RequestMeta {
     first_byte_ms: Option<i64>,
     /// 实际(出站)模型：映射/锁定改写后与入站不同才有值，透传为 None。
     actual_model: Option<String>,
+    trace: RequestTrace,
 }
 
 impl RequestMeta {
@@ -158,6 +162,7 @@ impl RequestMeta {
             first_byte_ms: self.first_byte_ms,
             actual_model: self.actual_model.clone(),
             error_body,
+            trace: Some(self.trace.clone()),
         }
     }
 }
@@ -189,6 +194,102 @@ fn error_body_from_bytes(bytes: &Bytes) -> Option<String> {
     }
     let text = String::from_utf8_lossy(bytes);
     Some(truncate_error_body(&text))
+}
+
+fn build_forward_headers(
+    st: &ProxyState,
+    ep: &Endpoint,
+    headers: &HeaderMap,
+) -> Vec<(String, String)> {
+    let ua_format = UpstreamFormat::from_transformer_name(&ep.transformer);
+    let ua_override = match ua_format {
+        UpstreamFormat::OpenAiChat | UpstreamFormat::OpenAiResponses => st.openai_ua.trim(),
+        UpstreamFormat::Claude => st.claude_cli_ua.trim(),
+    };
+    let override_ua = !ua_override.is_empty();
+    let add_codex_originator = override_ua
+        && ua_override.starts_with(ua::CODEX_ORIGINATOR)
+        && !headers.contains_key("originator");
+
+    let mut forward_headers = Vec::new();
+    for (key, value) in headers.iter() {
+        let lower_name = key.as_str().to_ascii_lowercase();
+        if lower_name == "host"
+            || lower_name == "content-length"
+            || lower_name == "accept-encoding"
+            || lower_name == "authorization"
+            || lower_name == "x-api-key"
+            || lower_name == resolver::ENDPOINT_HEADER
+            || lower_name == resolver::ENDPOINT_HEADER_ALT
+            || (override_ua && lower_name == "user-agent")
+        {
+            continue;
+        }
+        if let Ok(value) = value.to_str() {
+            forward_headers.push((key.as_str().to_string(), value.to_string()));
+        }
+    }
+
+    if override_ua {
+        forward_headers.push(("user-agent".to_string(), ua_override.to_string()));
+    }
+    if add_codex_originator {
+        forward_headers.push(("originator".to_string(), ua::CODEX_ORIGINATOR.to_string()));
+    }
+
+    let key = ep.api_key.as_str();
+    if !key.is_empty() {
+        match ep.transformer.as_str() {
+            "openai" | "openai2" | "openai_chat" => {
+                forward_headers.push(("authorization".to_string(), format!("Bearer {key}")));
+            }
+            _ => {
+                forward_headers.push(("x-api-key".to_string(), key.to_string()));
+                forward_headers.push(("authorization".to_string(), format!("Bearer {key}")));
+            }
+        }
+    }
+
+    forward_headers
+}
+
+fn empty_trace() -> RequestTrace {
+    RequestTrace {
+        received_request: RequestTraceStage::default(),
+        forward_request: RequestTraceStage::default(),
+        received_forwarded_request: RequestTraceStage::default(),
+        response_request: RequestTraceStage::default(),
+    }
+}
+
+fn set_upstream_trace(
+    meta: &mut RequestMeta,
+    status_code: u16,
+    headers: Vec<crate::models::stats::RequestTraceHeader>,
+    body: Option<String>,
+) {
+    let url = meta
+        .trace
+        .forward_request
+        .url
+        .clone()
+        .unwrap_or_else(|| meta.upstream_path.clone());
+    meta.trace.received_forwarded_request =
+        trace_capture::response_stage(url, Some(status_code as i64), headers, body);
+}
+
+fn set_response_trace(
+    meta: &mut RequestMeta,
+    status_code: u16,
+    headers: Vec<crate::models::stats::RequestTraceHeader>,
+    body: Option<String>,
+) {
+    meta.trace.response_request = trace_capture::response_stage(
+        meta.inbound_path.clone(),
+        Some(status_code as i64),
+        headers,
+        body,
+    );
 }
 
 fn empty_candidates_message(model: Option<&str>, breaker_exhausted: bool) -> String {
@@ -241,6 +342,8 @@ pub async fn handle_proxy(
 ) -> Response {
     let path = uri.path().to_string();
     let started_ms = chrono::Utc::now().timestamp_millis();
+    let received_request_trace =
+        trace_capture::request_stage(&method, path.clone(), &headers, &body);
 
     // 解析请求体（model / stream / 供转换复用）
     let mut body_json: Option<Value> = serde_json::from_slice(&body).ok();
@@ -507,6 +610,7 @@ pub async fn handle_proxy(
     let mut last_endpoint = String::new();
     let mut last_status: Option<u16> = None;
     let mut last_error_body: Option<String> = None;
+    let mut last_request_meta: Option<RequestMeta> = None;
     // 最后一次实际尝试的出站路径：全部失败兜底记录时填入，避免前端按入站格式误推断。
     let mut last_upstream_path = String::new();
     // thinking 签名整流一次性标志：命中后清洗重试，仅一次，防死循环。
@@ -593,6 +697,8 @@ pub async fn handle_proxy(
         } else {
             path.as_str()
         };
+        let upstream_url = format!("{}{}", ep.api_url.trim_end_matches('/'), upstream_path);
+        let forward_headers = build_forward_headers(&st, &ep, &headers);
         last_upstream_path = upstream_path.to_string();
         let route_mode = if responses_to_chat {
             "responses->chat"
@@ -633,11 +739,40 @@ pub async fn handle_proxy(
         }
 
         let token = st.active.start(&ep.name);
+        let meta_template = RequestMeta {
+            endpoint: ep.name.clone(),
+            model: model.clone(),
+            inbound_format: (if inbound_openai {
+                "openai"
+            } else if inbound_responses {
+                "responses"
+            } else {
+                "claude"
+            })
+            .to_string(),
+            upstream_url: ep.api_url.clone(),
+            inbound_path: path.clone(),
+            upstream_path: upstream_path.to_string(),
+            started_ms,
+            first_byte_ms: None,
+            actual_model: None,
+            trace: RequestTrace {
+                received_request: received_request_trace.clone(),
+                forward_request: trace_capture::request_stage_from_pairs(
+                    &method,
+                    upstream_url.clone(),
+                    &forward_headers,
+                    &attempt_body,
+                ),
+                ..empty_trace()
+            },
+        };
         let result = tokio::select! {
             r = send_upstream(&st, &ep, &method, upstream_path, &headers, &attempt_body) => Some(r),
             _ = token.cancelled() => None,
         };
         st.active.finish(&ep.name);
+        last_request_meta = Some(meta_template.clone());
 
         match result {
             // 被手动切换取消 → 切到下一个
@@ -661,25 +796,9 @@ pub async fn handle_proxy(
                 } else {
                     None
                 };
-                let meta = RequestMeta {
-                    endpoint: ep.name.clone(),
-                    model: model.clone(),
-                    inbound_format: (if inbound_openai {
-                        "openai"
-                    } else if inbound_responses {
-                        "responses"
-                    } else {
-                        "claude"
-                    })
-                    .to_string(),
-                    upstream_url: ep.api_url.clone(),
-                    inbound_path: path.clone(),
-                    upstream_path: upstream_path.to_string(),
-                    started_ms,
-                    // 响应头到达即首字节（缓冲响应用此值；流式处理器会在首个内容分片到达时覆盖）。
-                    first_byte_ms: Some(chrono::Utc::now().timestamp_millis() - started_ms),
-                    actual_model,
-                };
+                let mut meta = meta_template.clone();
+                meta.first_byte_ms = Some(chrono::Utc::now().timestamp_millis() - started_ms);
+                meta.actual_model = actual_model;
                 if status == 200 {
                     // 成功：闭合熔断（半开恢复时回传许可）；转换则通知前端
                     if st.breakers.record_success(&ep.name, used_permit) {
@@ -724,6 +843,7 @@ pub async fn handle_proxy(
                         responses_to_chat && st.reasoning_effort_fallback;
                     let may_rectify_sig = st.rectifier_config.enabled && !sig_rectified;
                     let resp_headers = copy_response_headers(&resp);
+                    let upstream_trace_headers = trace_capture::capture_headers(resp.headers());
                     let err_bytes = resp.bytes().await.unwrap_or_default();
                     let err_text = String::from_utf8_lossy(&err_bytes);
 
@@ -757,6 +877,19 @@ pub async fn handle_proxy(
                         }
 
                         // 未命中 / 无可整流内容：用缓冲错误体原样回传
+                        let trace_body = trace_capture::capture_body(&err_bytes);
+                        set_upstream_trace(
+                            &mut meta,
+                            status,
+                            upstream_trace_headers.clone(),
+                            trace_body.clone(),
+                        );
+                        set_response_trace(
+                            &mut meta,
+                            status,
+                            trace_capture::capture_headers(&resp_headers),
+                            trace_body,
+                        );
                         st.stats.record(meta.into_record_with_error_body(
                             Some(status as i64),
                             status >= 400,
@@ -766,6 +899,14 @@ pub async fn handle_proxy(
                         return relay_buffered_error(status, resp_headers, err_bytes);
                     }
                     // 最终非重试状态（400/401）缓冲回传，便于记录上游错误体。
+                    let trace_body = trace_capture::capture_body(&err_bytes);
+                    set_upstream_trace(&mut meta, status, upstream_trace_headers, trace_body.clone());
+                    set_response_trace(
+                        &mut meta,
+                        status,
+                        trace_capture::capture_headers(&resp_headers),
+                        trace_body,
+                    );
                     st.stats.record(meta.into_record_with_error_body(
                         Some(status as i64),
                         status >= 400,
@@ -776,8 +917,17 @@ pub async fn handle_proxy(
                 }
                 last_err = format!("上游返回 {status}");
                 last_status = Some(status);
+                let upstream_trace_headers = trace_capture::capture_headers(resp.headers());
                 let err_bytes = resp.bytes().await.unwrap_or_default();
                 last_error_body = error_body_from_bytes(&err_bytes);
+                if let Some(meta) = last_request_meta.as_mut() {
+                    set_upstream_trace(
+                        meta,
+                        status,
+                        upstream_trace_headers,
+                        trace_capture::capture_body(&err_bytes),
+                    );
+                }
                 attempts_on_current += 1;
                 if attempts_on_current >= rotation::CONSECUTIVE_FAIL_SWITCH && !use_specific {
                     st.rotation.advance(n);
@@ -809,7 +959,37 @@ pub async fn handle_proxy(
         }
     }
 
-    if !last_endpoint.is_empty() {
+    let last_upstream_trace_body =
+        last_error_body
+            .clone()
+            .or_else(|| trace_capture::capture_text_body(&last_err));
+
+    if let Some(mut meta) = last_request_meta {
+        meta.trace.received_forwarded_request = trace_capture::response_stage(
+            meta.trace
+                .forward_request
+                .url
+                .clone()
+                .unwrap_or_else(|| meta.upstream_path.clone()),
+            last_status.map(i64::from),
+            Vec::new(),
+            last_upstream_trace_body.clone(),
+        );
+        meta.trace.response_request = trace_capture::response_stage(
+            meta.inbound_path.clone(),
+            Some(StatusCode::BAD_GATEWAY.as_u16() as i64),
+            trace_capture::json_headers(),
+            trace_capture::capture_text_body(
+                &format!(r#"{{"error":{{"type":"proxy_error","message":"所有端点均失败: {last_err}"}}}}"#),
+            ),
+        );
+        st.stats.record(meta.into_record_with_error_body(
+            Some(StatusCode::BAD_GATEWAY.as_u16() as i64),
+            true,
+            usage::TokenUsage::default(),
+            last_error_body,
+        ));
+    } else if !last_endpoint.is_empty() {
         st.stats.record(RequestRecord {
             endpoint_name: last_endpoint.clone(),
             model: model.clone(),
@@ -817,13 +997,41 @@ pub async fn handle_proxy(
             upstream_url: String::new(),
             inbound_path: path.clone(),
             upstream_path: last_upstream_path.clone(),
-            status_code: last_status.map(i64::from),
+            status_code: Some(StatusCode::BAD_GATEWAY.as_u16() as i64),
             is_error: true,
             usage: usage::TokenUsage::default(),
             duration_ms: Some(chrono::Utc::now().timestamp_millis() - started_ms),
             first_byte_ms: None,
             actual_model: None,
             error_body: last_error_body,
+            trace: Some(RequestTrace {
+                received_request: received_request_trace,
+                forward_request: RequestTraceStage {
+                    method: Some(method.to_string()),
+                    url: if last_upstream_path.is_empty() {
+                        None
+                    } else {
+                        Some(last_upstream_path.clone())
+                    },
+                    status_code: None,
+                    headers: Vec::new(),
+                    body: None,
+                },
+                received_forwarded_request: trace_capture::response_stage(
+                    last_upstream_path.clone(),
+                    last_status.map(i64::from),
+                    Vec::new(),
+                    last_upstream_trace_body,
+                ),
+                response_request: trace_capture::response_stage(
+                    path.clone(),
+                    Some(StatusCode::BAD_GATEWAY.as_u16() as i64),
+                    trace_capture::json_headers(),
+                    trace_capture::capture_text_body(
+                        &format!(r#"{{"error":{{"type":"proxy_error","message":"所有端点均失败: {last_err}"}}}}"#),
+                    ),
+                ),
+            }),
         });
     }
     json_error(
@@ -951,15 +1159,24 @@ fn relay_buffered_error(status_code: u16, headers: HeaderMap, bytes: Bytes) -> R
 async fn relay_buffered_response(
     resp: reqwest::Response,
     stats: Arc<StatsAggregator>,
-    meta: RequestMeta,
+    mut meta: RequestMeta,
     format: UpstreamFormat,
 ) -> Response {
     let status = StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+    let upstream_trace_headers = trace_capture::capture_headers(resp.headers());
     let out = copy_response_headers(&resp);
     let bytes = match resp.bytes().await {
         Ok(b) => b,
         Err(e) => return json_error(StatusCode::BAD_GATEWAY, &format!("读取上游响应失败: {e}")),
     };
+    let trace_body = trace_capture::capture_body(&bytes);
+    set_upstream_trace(&mut meta, status.as_u16(), upstream_trace_headers, trace_body.clone());
+    set_response_trace(
+        &mut meta,
+        status.as_u16(),
+        trace_capture::capture_headers(&out),
+        trace_body,
+    );
     let tu = serde_json::from_slice::<Value>(&bytes)
         .map(|j| usage::from_response(&j, format))
         .unwrap_or_default();
@@ -978,11 +1195,15 @@ fn relay_stream_response(
     format: UpstreamFormat,
 ) -> Response {
     let status = StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+    let upstream_trace_headers = trace_capture::capture_headers(resp.headers());
     let out = copy_response_headers(&resp);
+    let response_trace_headers = trace_capture::capture_headers(&out);
     let (tx, rx) = mpsc::channel::<Result<Bytes, std::io::Error>>(32);
     tokio::spawn(async move {
         let mut meta = meta;
         let mut acc = usage::UsageAccumulator::new(format);
+        let mut upstream_preview = trace_capture::TraceBodyCapture::default();
+        let mut response_preview = trace_capture::TraceBodyCapture::default();
         let mut stream = resp.bytes_stream();
         let mut first = true;
         while let Some(item) = stream.next().await {
@@ -996,10 +1217,24 @@ fn relay_stream_response(
                 first = false;
             }
             acc.feed(&chunk);
+            upstream_preview.push(&chunk);
+            response_preview.push(&chunk);
             if tx.send(Ok(chunk)).await.is_err() {
                 break;
             }
         }
+        set_upstream_trace(
+            &mut meta,
+            status.as_u16(),
+            upstream_trace_headers,
+            upstream_preview.finish(),
+        );
+        set_response_trace(
+            &mut meta,
+            status.as_u16(),
+            response_trace_headers,
+            response_preview.finish(),
+        );
         let tu = acc.finish();
         stats.record(meta.into_record(Some(status.as_u16() as i64), false, tu));
     });
@@ -1014,11 +1249,26 @@ fn relay_stream_response(
 async fn transform_buffered_response(
     resp: reqwest::Response,
     stats: Arc<StatsAggregator>,
-    meta: RequestMeta,
+    mut meta: RequestMeta,
 ) -> Response {
+    let upstream_trace_headers = trace_capture::capture_headers(resp.headers());
     match resp.text().await {
         Ok(text) => match serde_json::from_str::<Value>(&text) {
             Ok(openai) => {
+                let final_body = serde_json::to_string_pretty(&openai_response_to_claude(&openai))
+                    .unwrap_or_else(|_| text.clone());
+                set_upstream_trace(
+                    &mut meta,
+                    200,
+                    upstream_trace_headers,
+                    trace_capture::capture_text_body(&text),
+                );
+                set_response_trace(
+                    &mut meta,
+                    200,
+                    trace_capture::json_headers(),
+                    trace_capture::capture_text_body(&final_body),
+                );
                 let tu = usage::from_response(&openai, UpstreamFormat::OpenAiChat);
                 stats.record(meta.into_record(Some(200), false, tu));
                 (
@@ -1039,10 +1289,13 @@ fn stream_transform_response(
     stats: Arc<StatsAggregator>,
     meta: RequestMeta,
 ) -> Response {
+    let upstream_trace_headers = trace_capture::capture_headers(resp.headers());
     let (tx, rx) = mpsc::channel::<Result<Bytes, std::io::Error>>(32);
     tokio::spawn(async move {
         let mut meta = meta;
         let mut converter = StreamConverter::new(meta.model.clone().unwrap_or_default(), 0);
+        let mut upstream_preview = trace_capture::TraceBodyCapture::default();
+        let mut response_preview = trace_capture::TraceBodyCapture::default();
         let mut stream = resp.bytes_stream();
         let mut buf = String::new();
         let mut first = true;
@@ -1055,6 +1308,7 @@ fn stream_transform_response(
                 meta.first_byte_ms = Some(chrono::Utc::now().timestamp_millis() - meta.started_ms);
                 first = false;
             }
+            upstream_preview.push(&chunk);
             buf.push_str(&String::from_utf8_lossy(&chunk));
             while let Some(nl) = buf.find('\n') {
                 let line: String = buf[..nl].to_string();
@@ -1066,12 +1320,16 @@ fn stream_transform_response(
                 let data = data.trim();
                 if data == "[DONE]" {
                     for ev in converter.finish() {
-                        let _ = tx.send(Ok(Bytes::from(ev))).await;
+                        let chunk = Bytes::from(ev);
+                        response_preview.push(&chunk);
+                        let _ = tx.send(Ok(chunk)).await;
                     }
                 } else if !data.is_empty() {
                     if let Ok(j) = serde_json::from_str::<Value>(data) {
                         for ev in converter.process_chunk(&j) {
-                            let _ = tx.send(Ok(Bytes::from(ev))).await;
+                            let chunk = Bytes::from(ev);
+                            response_preview.push(&chunk);
+                            let _ = tx.send(Ok(chunk)).await;
                         }
                     }
                 }
@@ -1079,8 +1337,22 @@ fn stream_transform_response(
         }
         // 上游未发 [DONE] 时兜底收尾（finish 幂等）
         for ev in converter.finish() {
-            let _ = tx.send(Ok(Bytes::from(ev))).await;
+            let chunk = Bytes::from(ev);
+            response_preview.push(&chunk);
+            let _ = tx.send(Ok(chunk)).await;
         }
+        set_upstream_trace(
+            &mut meta,
+            200,
+            upstream_trace_headers,
+            upstream_preview.finish(),
+        );
+        set_response_trace(
+            &mut meta,
+            200,
+            trace_capture::sse_headers(),
+            response_preview.finish(),
+        );
         let (input, output, cache_creation, cache_read) = converter.usage();
         let tu = usage::TokenUsage {
             input,
@@ -1135,12 +1407,28 @@ mod tests {
 async fn buffered_responses_from_chat(
     resp: reqwest::Response,
     stats: Arc<StatsAggregator>,
-    meta: RequestMeta,
+    mut meta: RequestMeta,
 ) -> Response {
+    let upstream_trace_headers = trace_capture::capture_headers(resp.headers());
     match resp.text().await {
         Ok(text) => match serde_json::from_str::<Value>(&text) {
             Ok(chat) => {
                 let model = meta.model.clone().unwrap_or_default();
+                let final_body =
+                    serde_json::to_string_pretty(&chat_response_to_responses(&chat, &model))
+                        .unwrap_or_else(|_| text.clone());
+                set_upstream_trace(
+                    &mut meta,
+                    200,
+                    upstream_trace_headers,
+                    trace_capture::capture_text_body(&text),
+                );
+                set_response_trace(
+                    &mut meta,
+                    200,
+                    trace_capture::json_headers(),
+                    trace_capture::capture_text_body(&final_body),
+                );
                 let tu = usage::from_response(&chat, UpstreamFormat::OpenAiChat);
                 stats.record(meta.into_record(Some(200), false, tu));
                 (
@@ -1161,11 +1449,14 @@ fn stream_responses_from_chat(
     stats: Arc<StatsAggregator>,
     meta: RequestMeta,
 ) -> Response {
+    let upstream_trace_headers = trace_capture::capture_headers(resp.headers());
     let (tx, rx) = mpsc::channel::<Result<Bytes, std::io::Error>>(32);
     tokio::spawn(async move {
         let mut meta = meta;
         let mut converter =
             ResponsesStreamConverter::new(meta.model.clone().unwrap_or_default(), 0);
+        let mut upstream_preview = trace_capture::TraceBodyCapture::default();
+        let mut response_preview = trace_capture::TraceBodyCapture::default();
         let mut stream = resp.bytes_stream();
         let mut buf = String::new();
         let mut first = true;
@@ -1178,6 +1469,7 @@ fn stream_responses_from_chat(
                 meta.first_byte_ms = Some(chrono::Utc::now().timestamp_millis() - meta.started_ms);
                 first = false;
             }
+            upstream_preview.push(&chunk);
             buf.push_str(&String::from_utf8_lossy(&chunk));
             while let Some(nl) = buf.find('\n') {
                 let line: String = buf[..nl].to_string();
@@ -1189,12 +1481,16 @@ fn stream_responses_from_chat(
                 let data = data.trim();
                 if data == "[DONE]" {
                     for ev in converter.finish() {
-                        let _ = tx.send(Ok(Bytes::from(ev))).await;
+                        let chunk = Bytes::from(ev);
+                        response_preview.push(&chunk);
+                        let _ = tx.send(Ok(chunk)).await;
                     }
                 } else if !data.is_empty() {
                     if let Ok(j) = serde_json::from_str::<Value>(data) {
                         for ev in converter.process_chunk(&j) {
-                            let _ = tx.send(Ok(Bytes::from(ev))).await;
+                            let chunk = Bytes::from(ev);
+                            response_preview.push(&chunk);
+                            let _ = tx.send(Ok(chunk)).await;
                         }
                     }
                 }
@@ -1202,8 +1498,22 @@ fn stream_responses_from_chat(
         }
         // 上游未发 [DONE] 时兜底收尾（finish 幂等）
         for ev in converter.finish() {
-            let _ = tx.send(Ok(Bytes::from(ev))).await;
+            let chunk = Bytes::from(ev);
+            response_preview.push(&chunk);
+            let _ = tx.send(Ok(chunk)).await;
         }
+        set_upstream_trace(
+            &mut meta,
+            200,
+            upstream_trace_headers,
+            upstream_preview.finish(),
+        );
+        set_response_trace(
+            &mut meta,
+            200,
+            trace_capture::sse_headers(),
+            response_preview.finish(),
+        );
         let (input, output, cache_creation, cache_read) = converter.usage();
         let tu = usage::TokenUsage {
             input,

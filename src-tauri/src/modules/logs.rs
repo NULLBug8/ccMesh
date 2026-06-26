@@ -159,7 +159,8 @@ impl<S: Subscriber> Layer<S> for CaptureLayer {
             buf.push_back(line.clone());
         }
         if let Some(app) = APP.get() {
-            let _ = app.emit(LOG_EVENT, line);
+            let _ = app.emit(LOG_EVENT, &line);
         }
+        crate::modules::web_admin::bridge::emit(LOG_EVENT, &line);
     }
 }

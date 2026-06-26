@@ -11,6 +11,7 @@ use axum::{
     Json, Router,
 };
 use serde_json::json;
+use tauri::AppHandle;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
@@ -67,6 +68,14 @@ impl ProxyHandle {
 
 fn build_router(state: Arc<ProxyState>) -> Router {
     Router::new()
+        .route("/__admin/api/invoke", post(crate::commands::web_admin::invoke_http))
+        .route("/__admin/events", get(crate::commands::web_admin::events_sse))
+        .route("/__admin", get(crate::commands::web_admin::static_asset_root))
+        .route("/__admin/", get(crate::commands::web_admin::static_asset_root))
+        .route(
+            "/__admin/{*path}",
+            get(crate::commands::web_admin::static_asset),
+        )
         .route("/health", get(health_route))
         .route("/stats", get(stats_route))
         .route("/v1/models", get(models_route))
@@ -77,6 +86,7 @@ fn build_router(state: Arc<ProxyState>) -> Router {
 
 /// 在本地端口启动代理服务。返回运行句柄。
 pub async fn start_proxy(
+    app: AppHandle,
     db_pool: DbPool,
     port: u16,
     stats: Arc<StatsAggregator>,
@@ -115,6 +125,7 @@ pub async fn start_proxy(
     };
 
     let state = Arc::new(ProxyState {
+        app,
         db_pool,
         client,
         proxy_client,

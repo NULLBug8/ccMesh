@@ -160,6 +160,7 @@ pub fn run() {
                         .map(|cfg| cfg.port)
                         .unwrap_or_else(|| models::config::AppConfig::default().port);
                     match modules::proxy::server::start_proxy(
+                        run_handle.clone(),
                         state.db_pool.clone(),
                         port,
                         state.stats.clone(),

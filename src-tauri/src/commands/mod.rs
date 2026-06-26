@@ -12,4 +12,5 @@ pub mod tool_config;
 pub mod update;
 pub mod usage;
 pub mod webdav;
+pub mod web_admin;
 pub mod window;

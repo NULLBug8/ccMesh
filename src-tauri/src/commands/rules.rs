@@ -13,7 +13,7 @@ fn save_rules_config(state: &AppState, config: &RulesConfig) -> AppResult<()> {
     Ok(())
 }
 
-async fn restart_proxy_if_running(state: &AppState) -> AppResult<()> {
+async fn restart_proxy_if_running(app: &AppHandle, state: &AppState) -> AppResult<()> {
     let handle = state.proxy.lock().unwrap().take();
     if let Some(handle) = handle {
         handle.stop().await;
@@ -21,7 +21,13 @@ async fn restart_proxy_if_running(state: &AppState) -> AppResult<()> {
             let conn = state.db_pool.get()?;
             config_repo::get_config(&conn)?.port
         };
-        let new_handle = start_server(state.db_pool.clone(), port, state.stats.clone()).await?;
+        let new_handle = start_server(
+            app.clone(),
+            state.db_pool.clone(),
+            port,
+            state.stats.clone(),
+        )
+        .await?;
         *state.proxy.lock().unwrap() = Some(new_handle);
     }
     Ok(())
@@ -40,7 +46,7 @@ pub async fn set_rules_config(
     config: RulesConfig,
 ) -> AppResult<RulesConfig> {
     save_rules_config(&state, &config)?;
-    restart_proxy_if_running(&state).await?;
+    restart_proxy_if_running(&app, &state).await?;
     let _ = app.emit(PROXY_STATUS_EVENT, build_status(&state));
     Ok(config)
 }
@@ -52,7 +58,7 @@ pub async fn reset_rules_config(
 ) -> AppResult<RulesConfig> {
     let config = RulesConfig::default();
     save_rules_config(&state, &config)?;
-    restart_proxy_if_running(&state).await?;
+    restart_proxy_if_running(&app, &state).await?;
     let _ = app.emit(PROXY_STATUS_EVENT, build_status(&state));
     Ok(config)
 }

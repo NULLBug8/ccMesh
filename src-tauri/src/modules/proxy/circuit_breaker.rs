@@ -325,6 +325,7 @@ impl BreakerRegistry {
 /// 选路候选：过滤掉未到期的 Open 端点。全 Open 时返回空（调用方应返回 502），
 /// 不再兜底放行完整列表——模型过滤后的候选若被级联扩大，会误伤不支持该模型的端点。
 impl BreakerRegistry {
+    #[cfg(test)]
     pub fn config(&self) -> CircuitBreakerConfig {
         self.config
     }

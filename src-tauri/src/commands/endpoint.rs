@@ -15,6 +15,11 @@ use crate::state::AppState;
 /// 端点配置/测试状态变更事件（payload 为空，前端收到后全量重拉相关查询）。
 const ENDPOINTS_CHANGED_EVENT: &str = "endpoints-changed";
 
+fn emit_endpoints_changed(app: &AppHandle) {
+    let _ = app.emit(ENDPOINTS_CHANGED_EVENT, ());
+    crate::modules::web_admin::bridge::emit(ENDPOINTS_CHANGED_EVENT, &());
+}
+
 #[tauri::command]
 pub fn list_endpoints(state: State<AppState>) -> AppResult<Vec<Endpoint>> {
     let conn = state.db_pool.get()?;
@@ -36,7 +41,7 @@ pub fn update_endpoint(
 ) -> AppResult<Endpoint> {
     let conn = state.db_pool.get()?;
     let ep = endpoint_repo::update(&conn, id, &req)?;
-    let _ = app.emit(ENDPOINTS_CHANGED_EVENT, ());
+    emit_endpoints_changed(&app);
     Ok(ep)
 }
 
@@ -50,7 +55,7 @@ pub fn delete_endpoint(state: State<AppState>, id: i64) -> AppResult<()> {
 pub fn reorder_endpoints(app: AppHandle, state: State<AppState>, ordered_ids: Vec<i64>) -> AppResult<()> {
     let mut conn = state.db_pool.get()?;
     endpoint_repo::reorder(&mut conn, &ordered_ids)?;
-    let _ = app.emit(ENDPOINTS_CHANGED_EVENT, ());
+    emit_endpoints_changed(&app);
     Ok(())
 }
 
@@ -201,7 +206,7 @@ pub async fn test_endpoint(
         let conn = state.db_pool.get()?;
         endpoint_repo::set_test_status(&conn, id, status)?;
     }
-    let _ = app.emit(ENDPOINTS_CHANGED_EVENT, ());
+    emit_endpoints_changed(&app);
 
     Ok(TestResult {
         success,

@@ -12,3 +12,4 @@ pub mod tray;
 pub mod usage;
 pub mod usage_local;
 pub mod webdav;
+pub mod web_admin;
