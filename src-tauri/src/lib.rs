@@ -144,6 +144,7 @@ pub fn run() {
                 .and_then(|c| modules::storage::config_repo::get_config(&c).ok())
                 .map(|cfg| cfg.auto_run)
                 .unwrap_or_else(|| models::config::AppConfig::default().auto_run);
+            let auto_run = models::config::auto_run_with_env_override(auto_run);
             if auto_run {
                 let run_handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {

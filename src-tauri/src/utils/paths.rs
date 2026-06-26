@@ -5,10 +5,15 @@ use crate::error::{AppError, AppResult};
 
 /// 应用数据目录（不存在则创建）。
 pub fn app_data_dir(app: &AppHandle) -> AppResult<PathBuf> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| AppError::Config(format!("无法解析应用数据目录: {e}")))?;
+    let dir = std::env::var_os("CCMESH_DATA_DIR")
+        .map(PathBuf::from)
+        .filter(|path| !path.as_os_str().is_empty())
+        .map(Ok)
+        .unwrap_or_else(|| {
+            app.path()
+                .app_data_dir()
+                .map_err(|e| AppError::Config(format!("无法解析应用数据目录: {e}")))
+        })?;
     std::fs::create_dir_all(&dir)?;
     Ok(dir)
 }

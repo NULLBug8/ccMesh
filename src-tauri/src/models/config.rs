@@ -100,11 +100,15 @@ pub fn port_with_env_override(port: u16) -> u16 {
         .unwrap_or(port)
 }
 
+pub fn auto_run_with_env_override(auto_run: bool) -> bool {
+    auto_run || std::env::var_os("CCMESH_PORT").is_some()
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::{Mutex, OnceLock};
 
-    use super::port_with_env_override;
+    use super::{auto_run_with_env_override, port_with_env_override};
 
     fn with_env_port<T>(value: Option<&str>, test: impl FnOnce() -> T) -> T {
         static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -120,6 +124,21 @@ mod tests {
             None => std::env::remove_var("CCMESH_PORT"),
         }
         result
+    }
+
+    #[test]
+    fn auto_run_override_starts_when_port_env_is_present() {
+        with_env_port(Some("3001"), || {
+            assert!(auto_run_with_env_override(false));
+        });
+    }
+
+    #[test]
+    fn auto_run_override_keeps_config_without_port_env() {
+        with_env_port(None, || {
+            assert!(!auto_run_with_env_override(false));
+            assert!(auto_run_with_env_override(true));
+        });
     }
 
     #[test]
