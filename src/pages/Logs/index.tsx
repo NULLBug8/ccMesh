@@ -139,36 +139,61 @@ export function Logs() {
   };
 
   return (
-    <div className="flex h-full w-full min-w-0 flex-col gap-4">
+    <div className="flex h-full w-full min-w-0 flex-col gap-5">
       <PageLayoutEditor view="logs" definition={logsLayoutDefinition} />
       <PageSectionHost
         layout={layout}
         registry={{
           header: {
             title: "标题",
-            render: () => <h1 className="text-2xl font-light tracking-tight">日志</h1>,
+            className: "xl:col-span-12",
+            modeClassName: {
+              "two-column": "xl:col-span-2",
+            },
+            render: () => (
+              <div className="flex flex-wrap items-end justify-between gap-4 rounded-2xl border border-edge bg-gradient-to-r from-surface-raised via-surface to-surface-raised/40 p-5 shadow-sm">
+                <div className="flex flex-col gap-1">
+                  <span className="text-[11px] font-medium tracking-[0.16em] text-ink-mute uppercase">
+                    Request Observatory
+                  </span>
+                  <h1 className="text-2xl font-light tracking-tight">日志</h1>
+                  <p className="text-sm text-ink-mute">
+                    最近请求、四段链路和运行日志集中分析。
+                  </p>
+                </div>
+                <div className="rounded-full border border-edge-subtle bg-background/60 px-3 py-1 font-mono text-xs text-ink-secondary">
+                  {selectedRequestLog ? `#${selectedRequestLog.id}` : "未选择请求"}
+                </div>
+              </div>
+            ),
           },
           toolbar: {
             title: "日志工具栏",
+            className: "xl:col-span-12",
+            modeClassName: {
+              "two-column": "xl:col-span-2",
+            },
             render: () => (
-              <LogToolbar
-                selected={selectedLevels}
-                onToggleLevel={toggleLevel}
-                onShowAll={() => setSelectedLevels(new Set())}
-                counts={counts}
-                total={lines.length}
-                keyword={keyword}
-                onKeyword={setKeyword}
-                captureLevel={captureLevel}
-                onCaptureLevel={changeCapture}
-                onCopy={copyAll}
-                onClear={() => setLines([])}
-              />
+              <div className="rounded-2xl border border-edge bg-surface p-4">
+                <LogToolbar
+                  selected={selectedLevels}
+                  onToggleLevel={toggleLevel}
+                  onShowAll={() => setSelectedLevels(new Set())}
+                  counts={counts}
+                  total={lines.length}
+                  keyword={keyword}
+                  onKeyword={setKeyword}
+                  captureLevel={captureLevel}
+                  onCaptureLevel={changeCapture}
+                  onCopy={copyAll}
+                  onClear={() => setLines([])}
+                />
+              </div>
             ),
           },
           requests: {
             title: "最近请求",
-            className: "rounded-lg border border-edge bg-surface p-4",
+            className: "min-h-[34rem] rounded-2xl border border-edge bg-surface p-4 shadow-sm",
             modeClassName: {
               split: "xl:col-span-5",
             },
@@ -185,7 +210,7 @@ export function Logs() {
           },
           trace: {
             title: "请求四阶段详情",
-            className: "rounded-lg border border-edge bg-surface p-4",
+            className: "min-h-[34rem] overflow-auto rounded-2xl border border-edge bg-surface p-4 shadow-sm",
             modeClassName: {
               split: "xl:col-span-7",
             },
@@ -195,14 +220,26 @@ export function Logs() {
             title: "日志流",
             className: "min-h-0 flex-1",
             modeClassName: {
+              "two-column": "xl:col-span-2",
               split: "xl:col-span-12",
             },
             render: () => (
-              <div className="relative flex-1 overflow-hidden">
+              <div className="relative flex min-h-[18rem] flex-1 flex-col overflow-hidden rounded-2xl border border-edge bg-surface p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-sm font-medium text-foreground">运行日志流</h2>
+                    <p className="text-xs text-ink-mute">
+                      用于排查系统事件；请求链路请优先查看上方详情面板。
+                    </p>
+                  </div>
+                  <span className="rounded-full border border-edge-subtle px-2 py-1 font-mono text-xs text-ink-secondary">
+                    {filtered.length}/{lines.length}
+                  </span>
+                </div>
                 <div
                   ref={scrollRef}
                   onScroll={onScroll}
-                  className="h-full overflow-y-auto rounded-lg border border-edge bg-surface-raised p-3 font-mono text-xs"
+                  className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-edge bg-surface-raised p-3 font-mono text-xs"
                 >
                   {filtered.length === 0 ? (
                     <p className="text-ink-mute">

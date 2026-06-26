@@ -64,8 +64,8 @@ describe("RequestTracePanel", () => {
 
     expect(screen.getByText("接收请求")).toBeInTheDocument();
     expect(screen.getByText("转发请求")).toBeInTheDocument();
-    expect(screen.getByText("接收转发的请求")).toBeInTheDocument();
-    expect(screen.getByText("响应请求")).toBeInTheDocument();
+    expect(screen.getByText("接收上游响应")).toBeInTheDocument();
+    expect(screen.getByText("响应客户端")).toBeInTheDocument();
 
     expect(screen.getAllByText("/v1/messages")).toHaveLength(2);
     expect(screen.getAllByText("https://up.example/v1/chat/completions")).toHaveLength(2);
@@ -73,10 +73,20 @@ describe("RequestTracePanel", () => {
     expect(screen.getAllByText("content-type")).toHaveLength(3);
   });
 
-  it("renders the empty state when no trace is available", () => {
+  it("keeps the four-stage layout visible when the selected request has no trace", () => {
     render(<RequestTracePanel log={{ ...tracedLog, id: 12, trace: null }} />);
-    expect(
-      screen.getByText("选择一条请求后，可以在这里查看四段详细链路。"),
-    ).toBeInTheDocument();
+
+    expect(screen.getByText("ep-a")).toBeInTheDocument();
+    expect(screen.getByText("未记录详细链路")).toBeInTheDocument();
+    expect(screen.getByText("接收请求")).toBeInTheDocument();
+    expect(screen.getByText("转发请求")).toBeInTheDocument();
+    expect(screen.getByText("接收上游响应")).toBeInTheDocument();
+    expect(screen.getByText("响应客户端")).toBeInTheDocument();
+  });
+
+  it("asks the user to select a request before showing details", () => {
+    render(<RequestTracePanel log={null} />);
+
+    expect(screen.getByText("选择一条请求查看链路")).toBeInTheDocument();
   });
 });

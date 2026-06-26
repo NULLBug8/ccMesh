@@ -113,7 +113,7 @@ export function RequestMonitor({
   }, [autoSelectFirst, items, onSelectLog, selectedLogId]);
 
   return (
-    <section className="flex flex-col gap-3">
+    <section className="flex h-full min-w-0 flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-medium text-ink-secondary">
           {title ?? (mode === "live" ? "实时请求监控" : "端点请求记录")}
@@ -172,8 +172,8 @@ export function RequestLogTable({
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border border-edge">
-      <table className="w-full text-sm">
+    <div className="min-w-0 overflow-auto rounded-xl border border-edge bg-background/35">
+      <table className="w-full min-w-[760px] text-sm">
         <thead>
           <tr className="border-b border-edge text-xs text-ink-secondary">
             <th className="px-3 py-2 text-left font-medium">时间</th>
@@ -275,8 +275,8 @@ function RequestRow({
       tabIndex={selectable ? 0 : undefined}
       className={cn(
         "border-b border-edge-subtle last:border-0",
-        selectable && "cursor-pointer transition-colors hover:bg-surface-hover/40",
-        selected && "bg-info/15",
+        selectable && "cursor-pointer transition-colors hover:bg-surface-hover/50",
+        selected && "bg-info/20 ring-1 ring-inset ring-info/40",
       )}
       onClick={selectable ? selectRow : undefined}
       onKeyDown={
