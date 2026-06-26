@@ -139,7 +139,7 @@ export function Logs() {
   };
 
   return (
-    <div className="mx-auto flex h-full max-w-6xl flex-col gap-4">
+    <div className="flex h-full w-full min-w-0 flex-col gap-4">
       <PageLayoutEditor view="logs" definition={logsLayoutDefinition} />
       <PageSectionHost
         layout={layout}

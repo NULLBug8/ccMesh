@@ -67,7 +67,7 @@ export function Rules() {
   }
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-6">
+    <div className="flex w-full min-w-0 flex-col gap-6">
       <PageLayoutEditor view="rules" definition={rulesLayoutDefinition} />
       <PageSectionHost
         layout={layout}

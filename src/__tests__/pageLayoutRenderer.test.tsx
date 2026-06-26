@@ -24,4 +24,20 @@ describe("PageSectionHost", () => {
     expect(screen.getByText("B")).toBeInTheDocument();
     expect(screen.queryByText("A")).not.toBeInTheDocument();
   });
+
+  it("keeps split sections readable by defaulting them to full row width", () => {
+    render(
+      <PageSectionHost
+        layout={{
+          mode: "split",
+          sections: [{ id: "a", visible: true }],
+        }}
+        registry={{
+          a: { title: "A", render: () => <div>A</div> },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("A").parentElement).toHaveClass("xl:col-span-12");
+  });
 });

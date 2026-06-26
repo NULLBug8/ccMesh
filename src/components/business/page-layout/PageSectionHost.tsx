@@ -20,7 +20,7 @@ function containerClass(mode: PageLayoutConfig["mode"]): string {
 
 export function PageSectionHost({ layout, registry }: Props) {
   return (
-    <div className={containerClass(layout.mode)}>
+    <div className={cn("min-w-0", containerClass(layout.mode))}>
       {layout.sections
         .filter((section) => section.visible && registry[section.id])
         .map((section) => {
@@ -28,7 +28,12 @@ export function PageSectionHost({ layout, registry }: Props) {
           return (
             <div
               key={section.id}
-              className={cn(entry.className, entry.modeClassName?.[layout.mode])}
+              className={cn(
+                "min-w-0",
+                layout.mode === "split" && "xl:col-span-12",
+                entry.className,
+                entry.modeClassName?.[layout.mode],
+              )}
             >
               {entry.render()}
             </div>
