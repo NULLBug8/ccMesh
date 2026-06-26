@@ -53,13 +53,14 @@ export function Endpoints() {
   };
 
   return (
-    <div className="mx-auto flex h-full max-w-4xl flex-col gap-5">
+    <div className="flex h-full w-full min-w-0 flex-col gap-5">
       <PageLayoutEditor view="endpoints" definition={endpointsLayoutDefinition} />
       <PageSectionHost
         layout={layout}
         registry={{
           header: {
             title: "标题与筛选",
+            className: "xl:col-span-12",
             render: () => (
               <div className="flex shrink-0 flex-col gap-5">
                 <h1 className="text-2xl font-light tracking-tight">端点管理</h1>
@@ -71,7 +72,7 @@ export function Endpoints() {
             title: "端点列表",
             className: "min-h-0 xl:col-span-7",
             render: () => (
-              <div className="min-h-0 overflow-y-auto pr-1">
+              <div className="min-h-0 overflow-auto pr-1">
                 {isLoading ? (
                   <p className="text-sm text-ink-mute">加载中...</p>
                 ) : filtered.length === 0 ? (

@@ -62,8 +62,8 @@ export function DnDList({ endpoints, draggable, view, onEdit }: Props) {
 
   const containerClass =
     view === "grid"
-      ? "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
-      : "flex flex-col gap-2";
+      ? "grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+      : "flex min-w-[680px] flex-col gap-2";
 
   return (
     <DragDropProvider

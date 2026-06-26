@@ -222,7 +222,7 @@ export function EndpointCard({
     );
 
   const actions = (
-    <div className="flex gap-0.5">
+    <div className="flex shrink-0 gap-0.5">
       {testButton}
       <IconAction label="模型映射" onClick={() => setMapOpen(true)}>
         <WaypointsIcon className="size-4" />
@@ -241,7 +241,7 @@ export function EndpointCard({
   );
 
   const meta = (
-    <span className="flex min-w-0 items-center text-xs text-ink-secondary">
+    <span className="flex min-w-0 items-center gap-2 text-xs text-ink-secondary">
       <button
         type="button"
         className="cursor-pointer truncate text-left hover:text-primary hover:underline"
@@ -326,12 +326,12 @@ export function EndpointCard({
   }
 
   return (
-    <Card>
-      <CardContent className="flex items-center gap-3 px-4 py-3">
+    <Card className="min-w-0">
+      <CardContent className="flex min-w-0 items-center gap-3 px-4 py-3">
         {grip}
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <div className="flex items-center gap-2">
-            <span className="truncate font-medium">{endpoint.name}</span>
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="min-w-0 truncate font-medium">{endpoint.name}</span>
             <Badge variant="muted">{endpoint.transformer}</Badge>
             {availability}
             {circuitBadge}
