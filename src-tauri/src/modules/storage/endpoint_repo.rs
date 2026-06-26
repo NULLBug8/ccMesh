@@ -499,4 +499,15 @@ mod tests {
         assert!(!got.balance_query.enabled);
         assert_eq!(got.balance_query.path, "/v1/dashboard/billing/subscription");
     }
+
+    #[test]
+    fn missing_balance_query_enabled_defaults_to_enabled_preset() {
+        use crate::models::endpoint::BalanceQueryConfig;
+
+        let parsed: BalanceQueryConfig = serde_json::from_str("{}").unwrap();
+
+        assert!(parsed.enabled);
+        assert_eq!(parsed.template_id, "openai-credit-grants");
+        assert_eq!(parsed.path, "/dashboard/billing/credit_grants");
+    }
 }

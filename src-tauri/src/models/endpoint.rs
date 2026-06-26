@@ -38,6 +38,7 @@ pub struct BalanceHeader {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct BalanceQueryConfig {
+    #[serde(default = "default_balance_query_enabled")]
     pub enabled: bool,
     pub template_id: String,
     pub method: String,
@@ -50,7 +51,7 @@ pub struct BalanceQueryConfig {
 impl Default for BalanceQueryConfig {
     fn default() -> Self {
         Self {
-            enabled: false,
+            enabled: true,
             template_id: "openai-credit-grants".into(),
             method: "GET".into(),
             path: "/dashboard/billing/credit_grants".into(),
@@ -59,6 +60,10 @@ impl Default for BalanceQueryConfig {
             extraction: BalanceExtraction::default(),
         }
     }
+}
+
+fn default_balance_query_enabled() -> bool {
+    true
 }
 
 /// 端点（上游 API 提供方）。对应 `endpoints` 表。

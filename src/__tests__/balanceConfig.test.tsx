@@ -71,5 +71,8 @@ describe("Balances page", () => {
     expect(screen.getByText("openai-credit-grants")).toBeInTheDocument();
     expect(screen.getByText("/dashboard/billing/credit_grants")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "查询全部余额" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查询 daily relay 余额" })).toBeEnabled();
+    expect(screen.getByText("站点")).toBeInTheDocument();
+    expect(screen.getByText("模板 / 路径")).toBeInTheDocument();
   });
 });
