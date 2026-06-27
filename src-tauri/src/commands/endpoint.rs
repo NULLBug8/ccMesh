@@ -10,6 +10,7 @@ use crate::models::endpoint::{
 };
 use crate::modules::models_probe::ProbeAuth;
 use crate::modules::proxy::client::{build_client, should_use_proxy};
+use crate::modules::proxy::diagnostics::diagnose_upstream_error;
 use crate::modules::storage::{config_repo, endpoint_repo};
 use crate::modules::transform::transformer::UpstreamFormat;
 use crate::state::AppState;
@@ -1272,30 +1273,7 @@ fn should_retry_endpoint_test_status(code: u16) -> bool {
 }
 
 fn endpoint_test_http_error_message(code: u16, url: &str, model: &str, body: &str) -> String {
-    let sample = body.chars().take(200).collect::<String>();
-    match code {
-        400 => format!(
-            "测试失败：上游拒绝请求（HTTP 400）。通常是模型名、请求格式或端点类型不匹配；测试 URL: {url}，模型: {model}，响应前200字符: {sample}"
-        ),
-        401 => format!(
-            "测试失败：鉴权失败（HTTP 401）。请检查 API Key、鉴权方式和端点类型；测试 URL: {url}"
-        ),
-        403 => format!(
-            "测试失败：上游返回 HTTP 403。可能是 API Key 权限不足，也可能是站点临时风控/频率限制；如果同站点其他模型偶尔成功，请稍后重试或检查该模型权限。测试 URL: {url}，模型: {model}，响应前200字符: {sample}"
-        ),
-        404 => format!(
-            "测试失败：接口不存在（HTTP 404）。通常是 API 地址或端点类型不匹配；测试 URL: {url}"
-        ),
-        429 => format!(
-            "测试失败：上游限流或额度不足（HTTP 429）。请检查站点余额、频率限制或稍后重试；测试 URL: {url}，模型: {model}，响应前200字符: {sample}"
-        ),
-        500..=599 => format!(
-            "测试失败：上游服务异常（HTTP {code}）。端点已连通，但站点当前不稳定或接口报错；测试 URL: {url}，模型: {model}，响应前200字符: {sample}"
-        ),
-        _ => format!(
-            "测试失败：上游返回 HTTP {code}；测试 URL: {url}，模型: {model}，响应前200字符: {sample}"
-        ),
-    }
+    diagnose_upstream_error(code, body).format_for_endpoint_test(code, url, model)
 }
 
 #[tauri::command]
@@ -1395,10 +1373,13 @@ pub async fn test_endpoint(
                             break;
                         }
                         Ok(text) => {
+                            let diag = diagnose_upstream_error(200, &text);
                             last_message = format!(
-                                "测试失败：{} 返回 HTTP 200，但流式响应不完整，未看到结束标记 {marker}。通常是端点类型选错，或该站点不支持这个流式接口；测试 URL: {url}，模型: {model}，响应前200字符: {}",
+                                "测试失败：{} 返回 HTTP 200，但流式响应不完整，未看到结束标记 {marker}。{}。处理方式：{}。如果“测试成功但实际调用失败”，请对比日志里的真实请求体：真实调用可能包含工具、图片、超长上下文、reasoning 参数或模型映射，和轻量测试请求不同。测试 URL: {url}，模型: {model}。依据：{}",
                                 endpoint_test_kind(format),
-                                text.chars().take(200).collect::<String>()
+                                diag.reason,
+                                diag.action,
+                                diag.evidence
                             );
                             break;
                         }
@@ -1688,8 +1669,8 @@ mod balance_probe_tests {
         );
 
         assert!(message.contains("HTTP 403"));
-        assert!(message.contains("权限不足"));
-        assert!(message.contains("临时风控"));
+        assert!(message.contains("处理方式"));
+        assert!(message.contains("不要直接判定 Key 错"));
         assert!(should_retry_endpoint_test_status(403));
     }
 
@@ -1704,7 +1685,36 @@ mod balance_probe_tests {
 
         assert!(message.contains("HTTP 503"));
         assert!(message.contains("不稳定"));
+        assert!(message.contains("处理方式"));
         assert!(should_retry_endpoint_test_status(503));
+    }
+
+    #[test]
+    fn endpoint_test_model_error_tells_user_to_fix_mapping() {
+        let message = endpoint_test_http_error_message(
+            400,
+            "https://example.com/v1/responses",
+            "gpt-5.5",
+            r#"{"error":{"code":"model_not_found","message":"model gpt-5.5 does not exist"}}"#,
+        );
+
+        assert!(message.contains("出站模型名"));
+        assert!(message.contains("模型映射"));
+        assert!(message.contains("处理方式"));
+    }
+
+    #[test]
+    fn endpoint_test_format_error_tells_user_to_fix_endpoint_type() {
+        let message = endpoint_test_http_error_message(
+            400,
+            "https://example.com/v1/responses",
+            "gpt-5.5",
+            r#"{"detail":"Input must be a list"}"#,
+        );
+
+        assert!(message.contains("请求格式"));
+        assert!(message.contains("端点类型"));
+        assert!(message.contains("处理方式"));
     }
 }
 

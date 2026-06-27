@@ -16,6 +16,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use crate::models::endpoint::Endpoint;
 use crate::models::stats::{RequestTrace, RequestTraceStage};
 use crate::modules::proxy::circuit_breaker::{self, BreakerRegistry};
+use crate::modules::proxy::diagnostics::diagnose_upstream_error;
 use crate::modules::proxy::resolver;
 use crate::modules::proxy::rotation::{self, Rotation};
 use crate::modules::proxy::trace_capture;
@@ -1065,10 +1066,22 @@ pub async fn handle_proxy(
         }
     }
 
-    let last_upstream_trace_body =
-        last_error_body
-            .clone()
-            .or_else(|| trace_capture::capture_text_body(&last_err));
+    let diagnostic_message = last_status
+        .and_then(|status| {
+            last_error_body.as_deref().map(|body| {
+                diagnose_upstream_error(status, body).format_for_proxy(
+                    &last_endpoint,
+                    status,
+                    model.as_deref(),
+                )
+            })
+        })
+        .unwrap_or_else(|| format!("所有端点均失败: {last_err}"));
+    let diagnostic_json = serde_json::to_string(&diagnostic_message)
+        .unwrap_or_else(|_| "\"所有端点均失败，且错误信息无法序列化\"".to_string());
+    let last_upstream_trace_body = last_error_body
+        .clone()
+        .or_else(|| trace_capture::capture_text_body(&diagnostic_message));
 
     if let Some(mut meta) = last_request_meta {
         meta.trace.received_forwarded_request = trace_capture::response_stage(
@@ -1085,9 +1098,9 @@ pub async fn handle_proxy(
             meta.inbound_path.clone(),
             Some(StatusCode::BAD_GATEWAY.as_u16() as i64),
             trace_capture::json_headers(),
-            trace_capture::capture_text_body(
-                &format!(r#"{{"error":{{"type":"proxy_error","message":"所有端点均失败: {last_err}"}}}}"#),
-            ),
+            trace_capture::capture_text_body(&format!(
+                r#"{{"error":{{"type":"proxy_error","message":{diagnostic_json}}}}}"#
+            )),
         );
         st.stats.record(meta.into_record_with_error_body(
             Some(StatusCode::BAD_GATEWAY.as_u16() as i64),
@@ -1133,16 +1146,16 @@ pub async fn handle_proxy(
                     path.clone(),
                     Some(StatusCode::BAD_GATEWAY.as_u16() as i64),
                     trace_capture::json_headers(),
-                    trace_capture::capture_text_body(
-                        &format!(r#"{{"error":{{"type":"proxy_error","message":"所有端点均失败: {last_err}"}}}}"#),
-                    ),
+                    trace_capture::capture_text_body(&format!(
+                        r#"{{"error":{{"type":"proxy_error","message":{diagnostic_json}}}}}"#
+                    )),
                 ),
             }),
         });
     }
     json_error(
         StatusCode::BAD_GATEWAY,
-        &format!("所有端点均失败: {last_err}"),
+        &diagnostic_message,
     )
 }
 
