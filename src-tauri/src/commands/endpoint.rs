@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, State};
 
 use crate::error::{AppError, AppResult};
@@ -1276,6 +1276,69 @@ fn endpoint_test_http_error_message(code: u16, url: &str, model: &str, body: &st
     diagnose_upstream_error(code, body).format_for_endpoint_test(code, url, model)
 }
 
+fn endpoint_test_probe(
+    base: &str,
+    format: UpstreamFormat,
+    model: &str,
+) -> (String, Value, Option<&'static str>) {
+    match format {
+        UpstreamFormat::OpenAiChat => (
+            format!("{base}/v1/chat/completions"),
+            json!({
+                "model": model, "max_tokens": 16, "stream": true,
+                "messages": [{ "role": "user", "content": "ping" }]
+            }),
+            Some("[DONE]"),
+        ),
+        UpstreamFormat::OpenAiResponses => (
+            format!("{base}/v1/responses"),
+            json!({
+                "model": model,
+                "instructions": "You are GPT.",
+                "max_output_tokens": 64,
+                "parallel_tool_calls": true,
+                "reasoning": { "effort": "medium" },
+                "store": false,
+                "stream": true,
+                "tools": [
+                    {
+                        "type": "function",
+                        "name": "ccmesh_probe",
+                        "description": "Connectivity probe tool. Do not call unless needed.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {},
+                            "additionalProperties": false
+                        },
+                        "strict": true
+                    }
+                ],
+                "tool_choice": "auto",
+                "input": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "input_text",
+                                "text": "请简短回答 OK"
+                            }
+                        ]
+                    }
+                ]
+            }),
+            Some("response.completed"),
+        ),
+        UpstreamFormat::Claude => (
+            format!("{base}/v1/messages"),
+            json!({
+                "model": model, "max_tokens": 16,
+                "messages": [{ "role": "user", "content": "ping" }]
+            }),
+            None,
+        ),
+    }
+}
+
 #[tauri::command]
 pub async fn test_endpoint(
     app: AppHandle,
@@ -1314,39 +1377,7 @@ pub async fn test_endpoint(
             .unwrap_or(requested_model);
     let model = outbound_model.as_str();
 
-    let (url, body, stream_marker) = match format {
-        UpstreamFormat::OpenAiChat => (
-            format!("{base}/v1/chat/completions"),
-            json!({
-                "model": model, "max_tokens": 16, "stream": true,
-                "messages": [{ "role": "user", "content": "ping" }]
-            }),
-            Some("[DONE]"),
-        ),
-        UpstreamFormat::OpenAiResponses => (
-            format!("{base}/v1/responses"),
-            json!({
-                "model": model, "max_output_tokens": 16, "stream": true,
-                "input": [
-                    {
-                        "role": "user",
-                        "content": [
-                            { "type": "input_text", "text": "ping" }
-                        ]
-                    }
-                ]
-            }),
-            Some("response.completed"),
-        ),
-        UpstreamFormat::Claude => (
-            format!("{base}/v1/messages"),
-            json!({
-                "model": model, "max_tokens": 16,
-                "messages": [{ "role": "user", "content": "ping" }]
-            }),
-            None,
-        ),
-    };
+    let (url, body, stream_marker) = endpoint_test_probe(base, format, model);
     let start = Instant::now();
     let mut attempt = 0usize;
     let mut last_message = String::new();
@@ -1367,7 +1398,7 @@ pub async fn test_endpoint(
                             success = true;
                             status = "available";
                             last_message = format!(
-                                "测试成功：{} 流式响应完整，模型 {model} 可用",
+                                "测试成功：{} Codex 兼容流式探针响应完整，模型 {model} 可用。说明：该结果证明此端点支持当前测试覆盖的 Responses 流式基础参数；如果真实调用仍失败，请查看日志里的上游错误诊断，通常是工具、图片、超长上下文、reasoning 参数或站点额外限制导致。",
                                 endpoint_test_kind(format)
                             );
                             break;
@@ -1715,6 +1746,48 @@ mod balance_probe_tests {
         assert!(message.contains("请求格式"));
         assert!(message.contains("端点类型"));
         assert!(message.contains("处理方式"));
+    }
+
+    #[test]
+    fn endpoint_test_codex_restriction_reports_client_upgrade() {
+        let message = endpoint_test_http_error_message(
+            403,
+            "https://new.sharedchat.cc/codex/v1/responses",
+            "gpt-5.2",
+            r#"{"error":{"message":"请使用最新版的codex客户端或codex cli调用","type":"invalid_request_error","code":"codex_access_restricted"}}"#,
+        );
+
+        assert!(message.contains("Codex 客户端版本"));
+        assert!(message.contains("User-Agent"));
+        assert!(message.contains("codex_access_restricted"));
+        assert!(!message.contains("权限不足"));
+        assert!(!message.contains("临时风控"));
+    }
+
+    #[test]
+    fn endpoint_test_codex_probe_sends_tool_choice_only_with_tools() {
+        let (url, body, marker) =
+            endpoint_test_probe("https://example.com/codex", UpstreamFormat::OpenAiResponses, "gpt-5.5");
+
+        assert_eq!(url, "https://example.com/codex/v1/responses");
+        assert_eq!(marker, Some("response.completed"));
+        assert_eq!(body.get("tool_choice").and_then(|v| v.as_str()), Some("auto"));
+        assert!(body.get("tools").and_then(|v| v.as_array()).is_some_and(|tools| !tools.is_empty()));
+    }
+
+    #[test]
+    fn endpoint_test_tool_choice_error_tells_user_exact_request_fix() {
+        let message = endpoint_test_http_error_message(
+            200,
+            "https://vsllm.com/v1/responses",
+            "qwen3.7-max",
+            r#"event:
+data: {"code":"InvalidParameter","message":"<400> InternalError.Algo.InvalidParameter: When using `tool_choice`, `tools` must be set."}"#,
+        );
+
+        assert!(message.contains("tool_choice"));
+        assert!(message.contains("tools"));
+        assert!(message.contains("去掉 tool_choice"));
     }
 }
 

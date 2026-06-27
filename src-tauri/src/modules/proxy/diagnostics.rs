@@ -31,6 +31,43 @@ pub fn diagnose_upstream_error(status: u16, body: &str) -> UpstreamDiagnostic {
     if contains_any(
         &haystack,
         &[
+            "codex_access_restricted",
+            "最新版的codex客户端",
+            "最新版 codex",
+            "latest codex",
+            "codex client",
+            "codex cli",
+        ],
+    ) {
+        return UpstreamDiagnostic {
+            reason: "上游限制 Codex 客户端版本或客户端标识".into(),
+            action: "升级 Codex CLI/客户端；如果这里是通过 ccMesh 测试，请到设置里检查 OpenAI/Codex User-Agent 伪装值，改成该站点要求的最新版 Codex UA，并保留 originator: codex_cli_rs；改完后重新测试该端点".into(),
+            evidence,
+        };
+    }
+
+    if haystack.contains("tool_choice")
+        && haystack.contains("tools")
+        && contains_any(
+            &haystack,
+            &[
+                "must be set",
+                "must be provided",
+                "is required",
+                "required when",
+            ],
+        )
+    {
+        return UpstreamDiagnostic {
+            reason: "请求包含 tool_choice，但没有同时提供 tools".into(),
+            action: "去掉 tool_choice，或在同一个请求体里提供 tools；如果这是端点连通性测试触发的，说明测试探针不应发送 tool_choice，应升级到修复后的版本再测".into(),
+            evidence,
+        };
+    }
+
+    if contains_any(
+        &haystack,
+        &[
             "invalid api key",
             "incorrect api key",
             "api key is invalid",
@@ -284,6 +321,31 @@ mod tests {
 
         assert!(diag.reason.contains("限流") || diag.reason.contains("风控"));
         assert!(diag.action.contains("不要直接判定 Key 错") || diag.action.contains("降低"));
+    }
+
+    #[test]
+    fn diagnoses_codex_client_version_restriction_before_generic_403() {
+        let diag = diagnose_upstream_error(
+            403,
+            r#"{"error":{"message":"请使用最新版的codex客户端或codex cli调用","type":"invalid_request_error","code":"codex_access_restricted"}}"#,
+        );
+
+        assert!(diag.reason.contains("Codex 客户端版本"));
+        assert!(diag.action.contains("User-Agent"));
+        assert!(diag.evidence.contains("codex_access_restricted"));
+    }
+
+    #[test]
+    fn diagnoses_tool_choice_without_tools_before_generic_format_error() {
+        let diag = diagnose_upstream_error(
+            200,
+            r#"data: {"code":"InvalidParameter","message":"<400> InternalError.Algo.InvalidParameter: When using `tool_choice`, `tools` must be set."}"#,
+        );
+
+        assert!(diag.reason.contains("tool_choice"));
+        assert!(diag.reason.contains("tools"));
+        assert!(diag.action.contains("去掉 tool_choice"));
+        assert!(diag.evidence.contains("tools"));
     }
 
     #[test]

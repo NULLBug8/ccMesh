@@ -924,7 +924,7 @@ pub async fn handle_proxy(
                     return match (needs_transform, client_wants_stream) {
                         (true, true) => stream_transform_response(resp, stats, meta),
                         (true, false) => transform_buffered_response(resp, stats, meta).await,
-                        (false, true) => relay_stream_response(resp, stats, meta, format),
+                        (false, true) => relay_stream_response(resp, st.clone(), meta, format),
                         (false, false) => relay_buffered_response(resp, stats, meta, format).await,
                     };
                 }
@@ -1309,7 +1309,7 @@ async fn relay_buffered_response(
 /// 流式直通：转发原始 SSE 字节同时累积真实 usage，流结束记录统计。
 fn relay_stream_response(
     resp: reqwest::Response,
-    stats: Arc<StatsAggregator>,
+    st: Arc<ProxyState>,
     meta: RequestMeta,
     format: UpstreamFormat,
 ) -> Response {
@@ -1320,15 +1320,21 @@ fn relay_stream_response(
     let (tx, rx) = mpsc::channel::<Result<Bytes, std::io::Error>>(32);
     tokio::spawn(async move {
         let mut meta = meta;
+        let endpoint_name = meta.endpoint.clone();
         let mut acc = usage::UsageAccumulator::new(format);
         let mut upstream_preview = trace_capture::TraceBodyCapture::default();
         let mut response_preview = trace_capture::TraceBodyCapture::default();
         let mut stream = resp.bytes_stream();
         let mut first = true;
+        let mut read_error: Option<String> = None;
+        let mut saw_responses_completed = !matches!(format, UpstreamFormat::OpenAiResponses);
         while let Some(item) = stream.next().await {
             let chunk = match item {
                 Ok(c) => c,
-                Err(_) => break,
+                Err(e) => {
+                    read_error = Some(e.to_string());
+                    break;
+                }
             };
             if first {
                 // 首个内容分片到达 → 更精确的首字延迟，覆盖响应头时刻。
@@ -1336,6 +1342,11 @@ fn relay_stream_response(
                 first = false;
             }
             acc.feed(&chunk);
+            if matches!(format, UpstreamFormat::OpenAiResponses)
+                && String::from_utf8_lossy(&chunk).contains("response.completed")
+            {
+                saw_responses_completed = true;
+            }
             upstream_preview.push(&chunk);
             response_preview.push(&chunk);
             if tx.send(Ok(chunk)).await.is_err() {
@@ -1355,13 +1366,55 @@ fn relay_stream_response(
             response_preview.finish(),
         );
         let tu = acc.finish();
-        stats.record(meta.into_record(Some(status.as_u16() as i64), false, tu));
+        let error_body = responses_stream_error_body(
+            format,
+            status.as_u16(),
+            read_error.as_deref(),
+            saw_responses_completed,
+        );
+        if let Some(error_body) = error_body.as_deref() {
+            if st
+                .breakers
+                .record_failure(&endpoint_name, false, Instant::now(), error_body)
+            {
+                st.stats.emit_health_changed();
+            }
+        }
+        st.stats.record(meta.into_record_with_error_body(
+            Some(status.as_u16() as i64),
+            error_body.is_some(),
+            tu,
+            error_body,
+        ));
     });
     let body = Body::from_stream(ReceiverStream::new(rx));
     let mut response = Response::new(body);
     *response.status_mut() = status;
     *response.headers_mut() = out;
     response
+}
+
+fn responses_stream_error_body(
+    format: UpstreamFormat,
+    status: u16,
+    read_error: Option<&str>,
+    saw_responses_completed: bool,
+) -> Option<String> {
+    if !matches!(format, UpstreamFormat::OpenAiResponses) || status != 200 {
+        return None;
+    }
+    if let Some(read_error) = read_error {
+        return Some(format!(
+            "上游 /v1/responses 流式响应读取失败：{read_error}。这通常会导致客户端看到 stream disconnected before completion；请降低该端点排序或改用 openai 类型走 /v1/chat/completions 转换链路。"
+        ));
+    }
+    if !saw_responses_completed {
+        return Some(
+            "上游 /v1/responses 流式响应已结束，但没有发送 response.completed 结束事件。该端点不满足 Codex Responses 流式协议，可能会导致 Codex 提示 stream disconnected before completion；请降低该端点排序、禁用该模型，或改用 openai 类型走 /v1/chat/completions 转换链路。"
+                .to_string(),
+        );
+    }
+    None
 }
 
 /// 非流式 OpenAI 响应 → 缓冲后转换为 Claude JSON 回传；记录真实 usage。
@@ -1495,7 +1548,7 @@ fn stream_transform_response(
 mod tests {
     use super::{
         empty_candidates_message, error_body_from_bytes, filter_unavailable_by_test_status,
-        should_route_responses_via_chat, truncate_error_body,
+        responses_stream_error_body, should_route_responses_via_chat, truncate_error_body,
     };
     use crate::models::endpoint::Endpoint;
     use crate::modules::transform::transformer::UpstreamFormat;
@@ -1541,6 +1594,38 @@ mod tests {
             true,
             UpstreamFormat::OpenAiResponses
         ));
+    }
+
+    #[test]
+    fn codex_stream_without_completed_is_recorded_as_error() {
+        let message = responses_stream_error_body(UpstreamFormat::OpenAiResponses, 200, None, false)
+            .expect("missing completed event should be an error");
+
+        assert!(message.contains("response.completed"));
+        assert!(message.contains("stream disconnected before completion"));
+        assert!(message.contains("openai"));
+    }
+
+    #[test]
+    fn codex_stream_read_error_is_recorded_as_error() {
+        let message = responses_stream_error_body(
+            UpstreamFormat::OpenAiResponses,
+            200,
+            Some("connection reset"),
+            false,
+        )
+        .expect("stream read errors should be recorded");
+
+        assert!(message.contains("读取失败"));
+        assert!(message.contains("connection reset"));
+    }
+
+    #[test]
+    fn completed_codex_stream_and_chat_stream_are_not_recorded_as_errors() {
+        assert!(
+            responses_stream_error_body(UpstreamFormat::OpenAiResponses, 200, None, true).is_none()
+        );
+        assert!(responses_stream_error_body(UpstreamFormat::OpenAiChat, 200, None, false).is_none());
     }
 
     fn endpoint_with_test_status(name: &str, status: &str) -> Endpoint {
