@@ -306,14 +306,13 @@ fn empty_candidates_message(model: Option<&str>, breaker_exhausted: bool) -> Str
 
 fn should_route_responses_via_chat(
     inbound_responses: bool,
-    client_wants_stream: bool,
+    _client_wants_stream: bool,
     format: UpstreamFormat,
 ) -> bool {
     if !inbound_responses {
         return false;
     }
     matches!(format, UpstreamFormat::OpenAiChat)
-        || (client_wants_stream && matches!(format, UpstreamFormat::OpenAiResponses))
 }
 
 fn any_endpoint_declares_model(enabled: &[Endpoint], model: &str) -> bool {
@@ -329,6 +328,19 @@ fn response_is_event_stream(headers: &HeaderMap) -> bool {
         .get(axum::http::header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
         .is_some_and(|value| value.to_ascii_lowercase().contains("text/event-stream"))
+}
+
+fn filter_unavailable_by_test_status(enabled: &[Endpoint]) -> Vec<Endpoint> {
+    let filtered: Vec<Endpoint> = enabled
+        .iter()
+        .filter(|ep| !ep.test_status.eq_ignore_ascii_case("unavailable"))
+        .cloned()
+        .collect();
+    if filtered.is_empty() {
+        enabled.to_vec()
+    } else {
+        filtered
+    }
 }
 
 fn urldecode(s: &str) -> String {
@@ -487,6 +499,19 @@ pub async fn handle_proxy(
         return json_error(StatusCode::BAD_REQUEST, &msg);
     }
     let use_specific = resolution.use_specific();
+    let enabled = if use_specific {
+        enabled
+    } else {
+        let filtered = filter_unavailable_by_test_status(&enabled);
+        if filtered.len() < enabled.len() {
+            tracing::info!(
+                before = enabled.len(),
+                after = filtered.len(),
+                "路由过滤：跳过手动测试不可用的端点"
+            );
+        }
+        filtered
+    };
     // 模型可用性过滤：非显式端点时，仅在「声明了该请求模型」的端点间轮换/熔断（故障隔离）；
     // 无任一端点声明该模型则回退全量（向后兼容）。显式指定端点遵从用户意图，不过滤。
     let enabled: Vec<Endpoint> = if use_specific {
@@ -1456,9 +1481,10 @@ fn stream_transform_response(
 #[cfg(test)]
 mod tests {
     use super::{
-        empty_candidates_message, error_body_from_bytes, should_route_responses_via_chat,
-        truncate_error_body,
+        empty_candidates_message, error_body_from_bytes, filter_unavailable_by_test_status,
+        should_route_responses_via_chat, truncate_error_body,
     };
+    use crate::models::endpoint::Endpoint;
     use crate::modules::transform::transformer::UpstreamFormat;
     use axum::body::Bytes;
 
@@ -1481,8 +1507,8 @@ mod tests {
     }
 
     #[test]
-    fn responses_stream_routes_responses_endpoints_via_chat() {
-        assert!(should_route_responses_via_chat(
+    fn responses_stream_routes_only_openai_endpoints_via_chat() {
+        assert!(!should_route_responses_via_chat(
             true,
             true,
             UpstreamFormat::OpenAiResponses
@@ -1502,6 +1528,43 @@ mod tests {
             true,
             UpstreamFormat::OpenAiResponses
         ));
+    }
+
+    fn endpoint_with_test_status(name: &str, status: &str) -> Endpoint {
+        Endpoint {
+            id: 1,
+            name: name.into(),
+            api_url: "https://example.com".into(),
+            api_key: String::new(),
+            auth_mode: "api_key".into(),
+            enabled: true,
+            use_proxy: false,
+            transformer: "codex".into(),
+            model: String::new(),
+            models: Vec::new(),
+            active_models: Vec::new(),
+            model_mappings: Vec::new(),
+            balance_query: Default::default(),
+            remark: String::new(),
+            sort_order: 0,
+            test_status: status.into(),
+            created_at: String::new(),
+            updated_at: String::new(),
+        }
+    }
+
+    #[test]
+    fn route_filter_skips_unavailable_test_status_when_possible() {
+        let endpoints = vec![
+            endpoint_with_test_status("bad", "unavailable"),
+            endpoint_with_test_status("unknown", "unknown"),
+            endpoint_with_test_status("good", "available"),
+        ];
+
+        let filtered = filter_unavailable_by_test_status(&endpoints);
+        let names: Vec<&str> = filtered.iter().map(|item| item.name.as_str()).collect();
+
+        assert_eq!(names, vec!["unknown", "good"]);
     }
 
     #[test]

@@ -1257,6 +1257,14 @@ pub async fn generate_balance_template_with_ai(
     ))
 }
 
+fn endpoint_test_kind(format: UpstreamFormat) -> &'static str {
+    match format {
+        UpstreamFormat::OpenAiChat => "openai /v1/chat/completions",
+        UpstreamFormat::OpenAiResponses => "codex /v1/responses",
+        UpstreamFormat::Claude => "claude /v1/messages",
+    }
+}
+
 #[tauri::command]
 pub async fn test_endpoint(
     app: AppHandle,
@@ -1283,29 +1291,41 @@ pub async fn test_endpoint(
     let format = UpstreamFormat::from_transformer_name(&ep.transformer);
     // 优先用调用方指定的模型（前端选择），否则端点锁定 model，再否则按格式回落默认
     let fallback = format.default_model();
-    let model_str = model.filter(|s| !s.trim().is_empty()).unwrap_or_else(|| {
+    let requested_model = model.filter(|s| !s.trim().is_empty()).unwrap_or_else(|| {
         if ep.model.is_empty() {
             fallback.to_string()
         } else {
             ep.model.clone()
         }
     });
-    let model = model_str.as_str();
+    let outbound_model =
+        crate::modules::proxy::resolver::resolve_outbound(&ep, Some(&requested_model))
+            .unwrap_or(requested_model);
+    let model = outbound_model.as_str();
 
-    let (url, body) = match format {
+    let (url, body, stream_marker) = match format {
         UpstreamFormat::OpenAiChat => (
             format!("{base}/v1/chat/completions"),
             json!({
-                "model": model, "max_tokens": 16,
+                "model": model, "max_tokens": 16, "stream": true,
                 "messages": [{ "role": "user", "content": "ping" }]
             }),
+            Some("[DONE]"),
         ),
         UpstreamFormat::OpenAiResponses => (
             format!("{base}/v1/responses"),
             json!({
-                "model": model, "max_output_tokens": 16,
-                "input": "ping"
+                "model": model, "max_output_tokens": 16, "stream": true,
+                "input": [
+                    {
+                        "role": "user",
+                        "content": [
+                            { "type": "input_text", "text": "ping" }
+                        ]
+                    }
+                ]
             }),
+            Some("response.completed"),
         ),
         UpstreamFormat::Claude => (
             format!("{base}/v1/messages"),
@@ -1313,6 +1333,7 @@ pub async fn test_endpoint(
                 "model": model, "max_tokens": 16,
                 "messages": [{ "role": "user", "content": "ping" }]
             }),
+            None,
         ),
     };
     let builder = ProbeAuth::primary_for(&ep.transformer)
@@ -1326,7 +1347,30 @@ pub async fn test_endpoint(
     let (success, status, message) = match result {
         Ok(resp) => {
             let code = resp.status().as_u16();
-            if code == 200 {
+            if code == 200 && stream_marker.is_some() {
+                let marker = stream_marker.unwrap();
+                match resp.text().await {
+                    Ok(text) if text.contains(marker) => (
+                        true,
+                        "available",
+                        format!("测试成功：{} 流式响应完整，模型 {model} 可用", endpoint_test_kind(format)),
+                    ),
+                    Ok(text) => (
+                        false,
+                        "unavailable",
+                        format!(
+                            "测试失败：{} 返回 HTTP 200，但流式响应不完整，未看到结束标记 {marker}。通常是端点类型选错，或该站点不支持这个流式接口；测试 URL: {url}，模型: {model}，响应前200字符: {}",
+                            endpoint_test_kind(format),
+                            text.chars().take(200).collect::<String>()
+                        ),
+                    ),
+                    Err(e) => (
+                        false,
+                        "unavailable",
+                        format!("测试失败：已连接到 {url}，但读取流式响应失败: {e}"),
+                    ),
+                }
+            } else if code == 200 {
                 (true, "available", "连接成功".to_string())
             } else if code == 401 || code == 403 {
                 (false, "unavailable", format!("鉴权失败（HTTP {code}）"))
