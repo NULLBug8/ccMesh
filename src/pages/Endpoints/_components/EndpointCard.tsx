@@ -122,11 +122,17 @@ export function EndpointCard({
   const balance = useMutation({
     mutationFn: () => endpointApi.queryBalance(endpoint.id),
     onSuccess: (r) => {
-      r.success
-        ? toast.success(
-            `${endpoint.name}：余额 ${r.balance ?? "-"}${r.currency ? ` ${r.currency}` : ""}`,
-          )
-        : toast.error(`${endpoint.name}：${r.message}`);
+      if (r.success) {
+        const limitText =
+          r.limits.length > 0
+            ? `；${r.limits.map((limit) => `${limit.label} ${limit.balance ?? "-"}`).join("；")}`
+            : "";
+        toast.success(
+          `${endpoint.name}：余额 ${r.balance ?? "-"}${r.currency ? ` ${r.currency}` : ""}${limitText}`,
+        );
+      } else {
+        toast.error(`${endpoint.name}：${r.message}`);
+      }
     },
     onError: (e) => toast.error(errMsg(e)),
   });

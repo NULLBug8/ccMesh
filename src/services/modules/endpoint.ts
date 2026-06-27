@@ -18,6 +18,14 @@ export interface BalanceExtraction {
   currencyPath: string;
   usedPath: string;
   expiresAtPath: string;
+  limits?: BalanceLimitExtraction[];
+}
+
+export interface BalanceLimitExtraction {
+  label: string;
+  balancePath: string;
+  usedPath: string;
+  expiresAtPath: string;
 }
 
 export interface BalanceQueryConfig {
@@ -38,8 +46,16 @@ export interface EndpointBalanceResult {
   currency: string | null;
   used: string | null;
   expiresAt: string | null;
+  limits: BalanceLimitResult[];
   message: string;
   raw: string;
+}
+
+export interface BalanceLimitResult {
+  label: string;
+  balance: string | null;
+  used: string | null;
+  expiresAt: string | null;
 }
 
 export interface BalanceProbeTemplateResult {
@@ -75,6 +91,7 @@ export const BALANCE_QUERY_PRESETS: BalanceQueryConfig[] = [
       currencyPath: "$.currency",
       usedPath: "$.total_used",
       expiresAtPath: "$.expires_at",
+      limits: [],
     },
   },
   {
@@ -89,6 +106,7 @@ export const BALANCE_QUERY_PRESETS: BalanceQueryConfig[] = [
       currencyPath: "$.data.currency",
       usedPath: "$.data.used_quota",
       expiresAtPath: "",
+      limits: [],
     },
   },
   {
@@ -103,6 +121,7 @@ export const BALANCE_QUERY_PRESETS: BalanceQueryConfig[] = [
       currencyPath: "",
       usedPath: "$.data.used_quota",
       expiresAtPath: "",
+      limits: [],
     },
   },
   {
@@ -117,6 +136,7 @@ export const BALANCE_QUERY_PRESETS: BalanceQueryConfig[] = [
       currencyPath: "$.data.currency",
       usedPath: "$.data.used_quota",
       expiresAtPath: "$.data.expired_time",
+      limits: [],
     },
   },
   {
@@ -131,6 +151,7 @@ export const BALANCE_QUERY_PRESETS: BalanceQueryConfig[] = [
       currencyPath: "",
       usedPath: "$.data.used_quota",
       expiresAtPath: "$.data.expired_time",
+      limits: [],
     },
   },
   {
@@ -145,6 +166,7 @@ export const BALANCE_QUERY_PRESETS: BalanceQueryConfig[] = [
       currencyPath: "$.data.currency",
       usedPath: "$.data.used_quota",
       expiresAtPath: "",
+      limits: [],
     },
   },
   {
@@ -159,6 +181,7 @@ export const BALANCE_QUERY_PRESETS: BalanceQueryConfig[] = [
       currencyPath: "$.data.currency",
       usedPath: "$.data.used_quota",
       expiresAtPath: "",
+      limits: [],
     },
   },
 ];
@@ -269,17 +292,19 @@ export const endpointApi = {
     request<EndpointTestResult>("test_endpoint", { id, model }),
   queryBalance: (id: number) =>
     request<EndpointBalanceResult>("query_endpoint_balance", { id }),
+  testBalanceTemplate: (id: number, balanceQuery: BalanceQueryConfig) =>
+    request<EndpointBalanceResult>("test_endpoint_balance_query", { id, balanceQuery }),
   probeBalanceTemplates: (id: number, customPath?: string) =>
     request<BalanceProbeResult>("probe_endpoint_balance_templates", { id, customPath }),
   generateBalanceTemplate: (
     id: number,
     aiModel: string,
-    sample: Pick<BalanceProbeTemplateResult, "templateId" | "path" | "statusCode" | "sample">,
+    samples: Array<Pick<BalanceProbeTemplateResult, "templateId" | "path" | "statusCode" | "sample">>,
   ) =>
     request<BalanceQueryConfig>("generate_balance_template_with_ai", {
       id,
       aiModel,
-      sample,
+      samples,
     }),
   fetchModels: (
     apiUrl: string,

@@ -32,6 +32,7 @@ import {
   type BalanceQueryConfig,
   type BalanceProbeTemplateResult,
   type BalanceProbeResult,
+  type EndpointBalanceResult,
   type Endpoint,
 } from "@/services/modules/endpoint";
 
@@ -89,6 +90,7 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
   const [showKey, setShowKey] = useState(false);
   const [tab, setTab] = useState("form");
   const [balanceProbe, setBalanceProbe] = useState<BalanceProbeResult | null>(null);
+  const [balanceTestResult, setBalanceTestResult] = useState<EndpointBalanceResult | null>(null);
   const [customProbePath, setCustomProbePath] = useState("");
   const [selectedAiModel, setSelectedAiModel] = useState("");
 
@@ -115,6 +117,7 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
     setShowKey(false);
     setTab("form");
     setBalanceProbe(null);
+    setBalanceTestResult(null);
     setCustomProbePath("");
     setSelectedAiModel("");
   }, [open, editing]);
@@ -137,6 +140,26 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
         ...patch,
       },
     });
+  const updateLimitExtraction = (
+    index: number,
+    patch: Partial<NonNullable<BalanceQueryConfig["extraction"]["limits"]>[number]>,
+  ) => {
+    const limits = [...(form.balanceQuery.extraction.limits ?? [])];
+    limits[index] = { ...limits[index], ...patch };
+    updateExtraction({ limits });
+  };
+  const removeLimitExtraction = (index: number) => {
+    const limits = (form.balanceQuery.extraction.limits ?? []).filter((_, i) => i !== index);
+    updateExtraction({ limits });
+  };
+  const addLimitExtraction = () => {
+    updateExtraction({
+      limits: [
+        ...(form.balanceQuery.extraction.limits ?? []),
+        { label: "新额度", balancePath: "", usedPath: "", expiresAtPath: "" },
+      ],
+    });
+  };
 
   const addModel = () => {
     const m = modelInput.trim();
@@ -198,19 +221,39 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
   });
 
   const generateBalance = useMutation({
-    mutationFn: (sample: BalanceProbeTemplateResult) => {
+    mutationFn: (samples: BalanceProbeTemplateResult[]) => {
       if (!editing) throw new Error("请先保存端点后再生成余额模板");
       if (!selectedAiModel.trim()) throw new Error("请选择此站点下的 AI 模型");
-      return endpointApi.generateBalanceTemplate(editing.id, selectedAiModel, {
-        templateId: sample.templateId,
-        path: sample.path,
-        statusCode: sample.statusCode,
-        sample: sample.sample,
-      });
+      return endpointApi.generateBalanceTemplate(
+        editing.id,
+        selectedAiModel,
+        samples.map((sample) => ({
+          templateId: sample.templateId,
+          path: sample.path,
+          statusCode: sample.statusCode,
+          sample: sample.sample,
+        })),
+      );
     },
     onSuccess: (config) => {
       update({ balanceQuery: { ...config, enabled: true } });
       toast.success("AI 已生成余额模板");
+    },
+    onError: (e) => toast.error(errMsg(e)),
+  });
+
+  const testBalanceTemplate = useMutation({
+    mutationFn: () => {
+      if (!editing) throw new Error("请先保存端点后再测试余额模板");
+      return endpointApi.testBalanceTemplate(editing.id, form.balanceQuery);
+    },
+    onSuccess: (result) => {
+      setBalanceTestResult(result);
+      if (result.success) {
+        toast.success("余额模板测试通过");
+      } else {
+        toast.error(result.message);
+      }
     },
     onError: (e) => toast.error(errMsg(e)),
   });
@@ -480,7 +523,7 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
 
                   {balanceProbe.status === "sampleAvailable" ? (
                     <div className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
-                      URL 已返回数据，但内置 JSON Path 没提取到余额。下一步可以选择 AI 端点生成模板。
+                      URL 已返回数据，但内置 JSON Path 没提取到余额。下一步可以让 AI 基于所有可用返回样本生成模板。
                     </div>
                   ) : null}
 
@@ -577,8 +620,7 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
                             variant="outline"
                             className="self-end"
                             onClick={() => {
-                              const sample = balanceProbe.usableSamples[0];
-                              if (sample) generateBalance.mutate(sample);
+                              generateBalance.mutate(balanceProbe.usableSamples);
                             }}
                             disabled={!selectedAiModel || generateBalance.isPending}
                           >
@@ -592,17 +634,47 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
               ) : null}
             </div>
 
-            <div className="flex items-center justify-between rounded-lg border border-edge-subtle bg-background/70 px-4 py-3">
+            <div className="flex flex-col gap-3 rounded-lg border border-edge-subtle bg-background/70 px-4 py-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <div className="text-sm font-medium">启用余额查询</div>
                 <p className="text-xs text-ink-mute">在端点卡片和余额查询页显示查询入口。</p>
               </div>
-              <Switch
-                checked={form.balanceQuery.enabled}
-                onCheckedChange={(enabled) => updateBalance({ enabled })}
-                aria-label="balance-query-enabled"
-              />
+              <div className="flex items-center gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => testBalanceTemplate.mutate()}
+                  disabled={!editing || testBalanceTemplate.isPending}
+                >
+                  {testBalanceTemplate.isPending ? "测试中..." : "测试当前模板"}
+                </Button>
+                <Switch
+                  checked={form.balanceQuery.enabled}
+                  onCheckedChange={(enabled) => updateBalance({ enabled })}
+                  aria-label="balance-query-enabled"
+                />
+              </div>
             </div>
+            {balanceTestResult ? (
+              <div className="rounded-lg border border-edge-subtle bg-surface/80 px-4 py-3 text-sm">
+                <div className={balanceTestResult.success ? "text-success" : "text-destructive"}>
+                  {balanceTestResult.success
+                    ? `余额 ${balanceTestResult.balance ?? "-"}${balanceTestResult.currency ? ` ${balanceTestResult.currency}` : ""}`
+                    : balanceTestResult.message}
+                </div>
+                {balanceTestResult.limits.length > 0 ? (
+                  <div className="mt-2 space-y-1 text-xs text-ink-mute">
+                    {balanceTestResult.limits.map((limit) => (
+                      <div key={limit.label}>
+                        {limit.label}：剩余 {limit.balance ?? "-"}
+                        {limit.used ? `，已用 ${limit.used}` : ""}
+                        {limit.expiresAt ? `，到期 ${limit.expiresAt}` : ""}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             <div className="flex flex-col gap-1.5">
               <Label>常见模板</Label>
@@ -690,6 +762,76 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
                   onChange={(e) => updateExtraction({ expiresAtPath: e.target.value })}
                 />
               </div>
+            </div>
+
+            <div className="rounded-lg border border-edge-subtle bg-background/60 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-medium">多周期额度 JSON Path</div>
+                  <p className="text-xs text-ink-mute">
+                    用于 3 小时、一天、1 周等额外限额，AI 识别后会自动填入这里。
+                  </p>
+                </div>
+                <Button type="button" variant="outline" onClick={addLimitExtraction}>
+                  添加额度
+                </Button>
+              </div>
+              {(form.balanceQuery.extraction.limits ?? []).length > 0 ? (
+                <div className="mt-3 space-y-3">
+                  {(form.balanceQuery.extraction.limits ?? []).map((limit, index) => (
+                    <div
+                      key={index}
+                      className="grid gap-2 rounded-lg border border-edge-subtle bg-surface/70 p-3 md:grid-cols-2"
+                    >
+                      <div className="flex flex-col gap-1.5">
+                        <Label>额度名称</Label>
+                        <Input
+                          value={limit.label}
+                          placeholder="3小时额度"
+                          onChange={(e) => updateLimitExtraction(index, { label: e.target.value })}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <Label>剩余额度 JSON Path</Label>
+                        <Input
+                          value={limit.balancePath}
+                          placeholder="$.data.three_hour.remain"
+                          onChange={(e) =>
+                            updateLimitExtraction(index, { balancePath: e.target.value })
+                          }
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <Label>已用 JSON Path</Label>
+                        <Input
+                          value={limit.usedPath}
+                          placeholder="$.data.three_hour.used"
+                          onChange={(e) => updateLimitExtraction(index, { usedPath: e.target.value })}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <Label>重置/到期 JSON Path</Label>
+                        <div className="flex gap-2">
+                          <Input
+                            value={limit.expiresAtPath}
+                            placeholder="$.data.three_hour.reset_at"
+                            onChange={(e) =>
+                              updateLimitExtraction(index, { expiresAtPath: e.target.value })
+                            }
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => removeLimitExtraction(index)}
+                          >
+                            删除
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
 
             <div className="flex flex-col gap-1.5">

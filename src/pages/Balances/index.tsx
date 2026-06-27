@@ -16,10 +16,23 @@ function BalanceSummary({ result }: { result?: EndpointBalanceResult }) {
   if (!result) return <span className="rounded-full bg-surface-hover px-2 py-1 text-xs text-ink-mute">未查询</span>;
   if (!result.success) return <span className="text-xs font-medium text-danger">{result.message}</span>;
   return (
-    <span className="rounded-full bg-success/10 px-2 py-1 text-sm font-medium text-success">
-      {result.balance}
-      {result.currency ? ` ${result.currency}` : ""}
-    </span>
+    <div className="space-y-1">
+      <span className="inline-flex rounded-full bg-success/10 px-2 py-1 text-sm font-medium text-success">
+        {result.balance ?? "-"}
+        {result.currency ? ` ${result.currency}` : ""}
+      </span>
+      {result.limits.length > 0 ? (
+        <div className="space-y-0.5 text-xs text-ink-mute">
+          {result.limits.map((limit) => (
+            <div key={limit.label}>
+              {limit.label} {limit.balance ?? "-"}
+              {limit.used ? ` / 已用 ${limit.used}` : ""}
+              {limit.expiresAt ? ` / ${limit.expiresAt}` : ""}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

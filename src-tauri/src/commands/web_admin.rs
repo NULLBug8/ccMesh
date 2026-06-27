@@ -126,6 +126,13 @@ struct QueryEndpointBalanceArgs {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct TestEndpointBalanceQueryArgs {
+    id: i64,
+    balance_query: crate::models::endpoint::BalanceQueryConfig,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ProbeEndpointBalanceTemplatesArgs {
     id: i64,
     custom_path: Option<String>,
@@ -136,7 +143,7 @@ struct ProbeEndpointBalanceTemplatesArgs {
 struct GenerateBalanceTemplateWithAiArgs {
     id: i64,
     ai_model: String,
-    sample: endpoint::BalanceTemplateAiSample,
+    samples: Vec<endpoint::BalanceTemplateAiSample>,
 }
 
 #[derive(Deserialize)]
@@ -410,6 +417,17 @@ pub async fn invoke_http(
                 let args: QueryEndpointBalanceArgs = parse_args(body.args)?;
                 to_json(endpoint::query_endpoint_balance(state.clone(), args.id).await?)
             }
+            "test_endpoint_balance_query" => {
+                let args: TestEndpointBalanceQueryArgs = parse_args(body.args)?;
+                to_json(
+                    endpoint::test_endpoint_balance_query(
+                        state.clone(),
+                        args.id,
+                        args.balance_query,
+                    )
+                    .await?,
+                )
+            }
             "probe_endpoint_balance_templates" => {
                 let args: ProbeEndpointBalanceTemplatesArgs = parse_args(body.args)?;
                 to_json(
@@ -428,7 +446,7 @@ pub async fn invoke_http(
                         state.clone(),
                         args.id,
                         args.ai_model,
-                        args.sample,
+                        args.samples,
                     )
                     .await?,
                 )

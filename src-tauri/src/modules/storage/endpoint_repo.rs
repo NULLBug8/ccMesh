@@ -473,6 +473,7 @@ mod tests {
                 currency_path: "$.currency".into(),
                 used_path: "$.total_used".into(),
                 expires_at_path: "$.expires_at".into(),
+                limits: Vec::new(),
             },
         };
 

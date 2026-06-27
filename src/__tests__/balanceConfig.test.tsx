@@ -34,6 +34,7 @@ const balanceMocks = vi.hoisted(() => ({
           currencyPath: "$.data.currency",
           usedPath: "$.data.used_quota",
           expiresAtPath: "",
+          limits: [],
         },
       },
       remark: "",
@@ -90,6 +91,18 @@ const sampleProbeResult = {
       balance: null,
       config: null,
     },
+    {
+      templateId: "sub2api",
+      path: "/api/user/quota",
+      success: false,
+      urlReachable: true,
+      statusCode: 200,
+      latencyMs: 22,
+      message: "need json path",
+      sample: "{\"data\":{\"three_hour\":{\"remain\":10},\"daily\":{\"remain\":90}}}",
+      balance: null,
+      config: null,
+    },
   ],
   matched: null,
   usableSamples: [
@@ -102,6 +115,18 @@ const sampleProbeResult = {
       latencyMs: 18,
       message: "need json path",
       sample: "{\"data\":{\"balance\":88}}",
+      balance: null,
+      config: null,
+    },
+    {
+      templateId: "sub2api",
+      path: "/api/user/quota",
+      success: false,
+      urlReachable: true,
+      statusCode: 200,
+      latencyMs: 22,
+      message: "need json path",
+      sample: "{\"data\":{\"three_hour\":{\"remain\":10},\"daily\":{\"remain\":90}}}",
       balance: null,
       config: null,
     },
@@ -195,6 +220,7 @@ describe("Endpoint balance template assistant", () => {
             currencyPath: "$.data.currency",
             usedPath: "$.data.used_quota",
             expiresAtPath: "",
+            limits: [],
           },
         },
       },
@@ -225,6 +251,20 @@ describe("Endpoint balance template assistant", () => {
         currencyPath: "",
         usedPath: "",
         expiresAtPath: "",
+        limits: [
+          {
+            label: "3小时额度",
+            balancePath: "$.data.three_hour.remain",
+            usedPath: "$.data.three_hour.used",
+            expiresAtPath: "$.data.three_hour.reset_at",
+          },
+          {
+            label: "一天额度",
+            balancePath: "$.data.daily.remain",
+            usedPath: "$.data.daily.used",
+            expiresAtPath: "$.data.daily.reset_at",
+          },
+        ],
       },
     });
 
@@ -238,12 +278,57 @@ describe("Endpoint balance template assistant", () => {
 
     await waitFor(() => {
       expect(screen.getByDisplayValue("$.data.balance")).toBeInTheDocument();
+      expect(screen.getByDisplayValue("3小时额度")).toBeInTheDocument();
+      expect(screen.getByDisplayValue("$.data.three_hour.remain")).toBeInTheDocument();
     });
     expect(generate).toHaveBeenCalledWith(
       1,
       "gpt-5.5",
-      expect.objectContaining({ path: "/api/user/self" }),
+      expect.arrayContaining([
+        expect.objectContaining({ path: "/api/user/self" }),
+        expect.objectContaining({ path: "/api/user/quota" }),
+      ]),
     );
+  });
+
+  it("tests the current balance template before saving", async () => {
+    const testBalance = vi.spyOn(endpointApi, "testBalanceTemplate").mockResolvedValueOnce({
+      success: true,
+      status: 200,
+      latencyMs: 33,
+      balance: "88",
+      currency: "USD",
+      used: "12",
+      expiresAt: null,
+      limits: [
+        {
+          label: "1周额度",
+          balance: "700",
+          used: "300",
+          expiresAt: "2026-07-04T00:00:00Z",
+        },
+      ],
+      message: "余额查询成功",
+      raw: "{}",
+    });
+
+    renderEndpointForm();
+    await openBalanceTab();
+    fireEvent.change(screen.getByDisplayValue("$.data.quota"), {
+      target: { value: "$.data.balance" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "测试当前模板" }));
+
+    await waitFor(() => {
+      expect(testBalance).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({
+          extraction: expect.objectContaining({ balancePath: "$.data.balance" }),
+        }),
+      );
+      expect(screen.getByText("余额 88 USD")).toBeInTheDocument();
+      expect(screen.getByText("1周额度：剩余 700，已用 300，到期 2026-07-04T00:00:00Z")).toBeInTheDocument();
+    });
   });
 
   it("requires current endpoint models before AI template generation is available", async () => {

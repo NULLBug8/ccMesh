@@ -43,3 +43,8 @@ created_at: 2026-06-24
 - AI-assisted balance template generation now uses a model selected from the current endpoint instead of selecting a separate endpoint.
 - The backend validates that the selected model belongs to the current endpoint and rejects AI recognition when the endpoint has no models.
 - Built-in balance templates were expanded and renamed around relay types or site-specific names, including `newapi`, `one-api`, `sub2api`, `voapi`, `newapi-token`, and `one-hub`.
+
+## 2026-06-27 Balance multi-sample AI and multi-quota testing
+- AI-assisted balance template generation now receives all URL-reachable probe samples, so the model can choose the best balance endpoint instead of being forced to use the first returned sample.
+- Balance extraction supports additional quota periods through `extraction.limits`, allowing 3-hour, daily, weekly, or similar limits to be identified and displayed.
+- Endpoint balance editing now includes a "test current template" action that runs the unsaved template against the current endpoint before saving.

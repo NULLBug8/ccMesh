@@ -138,8 +138,18 @@ pub struct BalanceQueryResult {
     pub currency: Option<String>,
     pub used: Option<String>,
     pub expires_at: Option<String>,
+    pub limits: Vec<BalanceLimitResult>,
     pub message: String,
     pub raw: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BalanceLimitResult {
+    pub label: String,
+    pub balance: Option<String>,
+    pub used: Option<String>,
+    pub expires_at: Option<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -233,6 +243,7 @@ fn balance_query_presets() -> Vec<BalanceQueryConfig> {
                 currency_path: "$.currency".into(),
                 used_path: "$.total_used".into(),
                 expires_at_path: "$.expires_at".into(),
+                limits: Vec::new(),
             },
         },
         BalanceQueryConfig {
@@ -250,6 +261,7 @@ fn balance_query_presets() -> Vec<BalanceQueryConfig> {
                 currency_path: "$.data.currency".into(),
                 used_path: "$.data.used_quota".into(),
                 expires_at_path: String::new(),
+                limits: Vec::new(),
             },
         },
         BalanceQueryConfig {
@@ -267,6 +279,7 @@ fn balance_query_presets() -> Vec<BalanceQueryConfig> {
                 currency_path: String::new(),
                 used_path: "$.data.used_quota".into(),
                 expires_at_path: String::new(),
+                limits: Vec::new(),
             },
         },
         BalanceQueryConfig {
@@ -284,6 +297,7 @@ fn balance_query_presets() -> Vec<BalanceQueryConfig> {
                 currency_path: "$.data.currency".into(),
                 used_path: "$.data.used_quota".into(),
                 expires_at_path: "$.data.expired_time".into(),
+                limits: Vec::new(),
             },
         },
         BalanceQueryConfig {
@@ -301,6 +315,7 @@ fn balance_query_presets() -> Vec<BalanceQueryConfig> {
                 currency_path: String::new(),
                 used_path: "$.data.used_quota".into(),
                 expires_at_path: "$.data.expired_time".into(),
+                limits: Vec::new(),
             },
         },
         BalanceQueryConfig {
@@ -318,6 +333,7 @@ fn balance_query_presets() -> Vec<BalanceQueryConfig> {
                 currency_path: "$.data.currency".into(),
                 used_path: "$.data.used_quota".into(),
                 expires_at_path: String::new(),
+                limits: Vec::new(),
             },
         },
         BalanceQueryConfig {
@@ -335,6 +351,7 @@ fn balance_query_presets() -> Vec<BalanceQueryConfig> {
                 currency_path: "$.data.currency".into(),
                 used_path: "$.data.used_quota".into(),
                 expires_at_path: String::new(),
+                limits: Vec::new(),
             },
         },
     ]
@@ -424,7 +441,29 @@ async fn run_balance_query(
     let currency = json_path_value(&json, &extraction.currency_path);
     let used = json_path_value(&json, &extraction.used_path);
     let expires_at = json_path_value(&json, &extraction.expires_at_path);
-    let success = status < 400 && balance.is_some();
+    let limits: Vec<BalanceLimitResult> = extraction
+        .limits
+        .iter()
+        .filter_map(|limit| {
+            let label = limit.label.trim();
+            if label.is_empty() {
+                return None;
+            }
+            let balance = json_path_value(&json, &limit.balance_path);
+            let used = json_path_value(&json, &limit.used_path);
+            let expires_at = json_path_value(&json, &limit.expires_at_path);
+            if balance.is_none() && used.is_none() && expires_at.is_none() {
+                return None;
+            }
+            Some(BalanceLimitResult {
+                label: label.to_string(),
+                balance,
+                used,
+                expires_at,
+            })
+        })
+        .collect();
+    let success = status < 400 && (balance.is_some() || !limits.is_empty());
     let message = if success {
         "余额查询成功".to_string()
     } else if status >= 400 {
@@ -441,6 +480,7 @@ async fn run_balance_query(
         currency,
         used,
         expires_at,
+        limits,
         message,
         raw,
     })
@@ -519,9 +559,34 @@ fn ai_chat_url(api_url: &str, format: UpstreamFormat) -> String {
     }
 }
 
-fn balance_template_prompt(target: &Endpoint, sample: &BalanceTemplateAiSample) -> String {
+fn balance_template_prompt(target: &Endpoint, samples: &[BalanceTemplateAiSample]) -> String {
+    let sample_text = samples
+        .iter()
+        .enumerate()
+        .map(|(index, sample)| {
+            format!(
+                r#"Sample #{index}
+Probe template: {template_id}
+Probe path: {path}
+HTTP status: {status}
+Sanitized response sample:
+{sample}
+"#,
+                index = index + 1,
+                template_id = sample.template_id,
+                path = sample.path,
+                status = sample
+                    .status_code
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "unknown".into()),
+                sample = sample.sample.clone().unwrap_or_default(),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n---\n");
     format!(
         r#"You are configuring a relay balance query template.
+You will receive every probe URL that returned data. Compare all samples and choose the most suitable URL/path for the final template.
 Return only JSON matching this TypeScript shape:
 {{
   "enabled": true,
@@ -534,33 +599,35 @@ Return only JSON matching this TypeScript shape:
     "balancePath": "$.data.balance",
     "currencyPath": "",
     "usedPath": "",
-    "expiresAtPath": ""
+    "expiresAtPath": "",
+    "limits": [
+      {{
+        "label": "3小时额度",
+        "balancePath": "$.data.three_hour.remaining",
+        "usedPath": "$.data.three_hour.used",
+        "expiresAtPath": "$.data.three_hour.reset_at"
+      }}
+    ]
   }}
 }}
 
 Rules:
 - Do not include markdown.
 - Keep API keys as {{{{apiKey}}}} placeholders.
-- Prefer the provided path unless the sample clearly says another path.
+- Pick the path from the sample that best represents balance/quota data.
 - Choose JSON Paths that extract balance, currency, used amount, and expiry when present.
+- If the response contains multiple quota periods, such as 3-hour, daily, weekly, monthly, or request limits, include all of them in extraction.limits.
+- Use clear Chinese labels for limits when possible, for example "3小时额度", "一天额度", "1周额度".
+- Leave a limit field empty only when that field is not present.
 
 Endpoint name: {endpoint_name}
 Endpoint base URL: {api_url}
-Probe template: {template_id}
-Probe path: {path}
-HTTP status: {status}
-Sanitized response sample:
-{sample}
+Probe samples:
+{sample_text}
 "#,
         endpoint_name = target.name,
         api_url = target.api_url,
-        template_id = sample.template_id,
-        path = sample.path,
-        status = sample
-            .status_code
-            .map(|v| v.to_string())
-            .unwrap_or_else(|| "unknown".into()),
-        sample = sample.sample.clone().unwrap_or_default(),
+        sample_text = sample_text,
     )
 }
 
@@ -626,9 +693,15 @@ fn parse_ai_balance_config(text: &str) -> AppResult<BalanceQueryConfig> {
             "AI 返回的余额模板缺少 path".into(),
         ));
     }
-    if cfg.extraction.balance_path.trim().is_empty() {
+    if cfg.extraction.balance_path.trim().is_empty()
+        && cfg
+            .extraction
+            .limits
+            .iter()
+            .all(|limit| limit.balance_path.trim().is_empty())
+    {
         return Err(AppError::InvalidArgument(
-            "AI 返回的余额模板缺少 balancePath".into(),
+            "AI 返回的余额模板缺少 balancePath 或 limits[].balancePath".into(),
         ));
     }
     Ok(cfg)
@@ -648,7 +721,28 @@ pub async fn query_endpoint_balance(
     if !cfg.enabled {
         return Err(AppError::InvalidArgument("该端点未启用余额查询模板".into()));
     }
+    query_endpoint_balance_with_config(state, ep, cfg).await
+}
 
+#[tauri::command]
+pub async fn test_endpoint_balance_query(
+    state: State<'_, AppState>,
+    id: i64,
+    balance_query: BalanceQueryConfig,
+) -> AppResult<BalanceQueryResult> {
+    let ep = {
+        let conn = state.db_pool.get()?;
+        endpoint_repo::get_by_id(&conn, id)?
+            .ok_or_else(|| AppError::NotFound(format!("端点 #{id} 不存在")))?
+    };
+    query_endpoint_balance_with_config(state, ep, balance_query).await
+}
+
+async fn query_endpoint_balance_with_config(
+    state: State<'_, AppState>,
+    ep: Endpoint,
+    cfg: BalanceQueryConfig,
+) -> AppResult<BalanceQueryResult> {
     let (proxy_enabled, proxy_url) = {
         let conn = state.db_pool.get()?;
         let cfg = config_repo::get_config(&conn)?;
@@ -656,58 +750,7 @@ pub async fn query_endpoint_balance(
     };
     let want = should_use_proxy(ep.use_proxy, proxy_enabled, &proxy_url);
     let client = build_client(want, &proxy_url, Duration::from_secs(30))?;
-    let method =
-        reqwest::Method::from_bytes(cfg.method.trim().as_bytes()).unwrap_or(reqwest::Method::GET);
-    let url = balance_url(&ep, &cfg);
-    let mut req = client.request(method, &url);
-    for header in &cfg.headers {
-        let name = header.name.trim();
-        if name.is_empty() {
-            continue;
-        }
-        req = req.header(name, render_balance_template(&header.value, &ep));
-    }
-    if !cfg.body.trim().is_empty() {
-        req = req.body(render_balance_template(&cfg.body, &ep));
-    }
-
-    let start = Instant::now();
-    let resp = req
-        .send()
-        .await
-        .map_err(|e| AppError::Proxy(format!("余额查询失败: {e}")))?;
-    let latency_ms = start.elapsed().as_millis() as u64;
-    let status = resp.status().as_u16();
-    let raw = resp
-        .text()
-        .await
-        .map_err(|e| AppError::Proxy(format!("读取余额响应失败: {e}")))?;
-    let json: serde_json::Value = serde_json::from_str(&raw).unwrap_or(serde_json::Value::Null);
-    let extraction = &cfg.extraction;
-    let balance = json_path_value(&json, &extraction.balance_path);
-    let currency = json_path_value(&json, &extraction.currency_path);
-    let used = json_path_value(&json, &extraction.used_path);
-    let expires_at = json_path_value(&json, &extraction.expires_at_path);
-    let success = status < 400 && balance.is_some();
-    let message = if success {
-        "余额查询成功".to_string()
-    } else if status >= 400 {
-        format!("余额接口返回 HTTP {status}")
-    } else {
-        "余额响应中未找到余额字段".to_string()
-    };
-
-    Ok(BalanceQueryResult {
-        success,
-        status,
-        latency_ms,
-        balance,
-        currency,
-        used,
-        expires_at,
-        message,
-        raw,
-    })
+    run_balance_query(&client, &ep, &cfg).await
 }
 
 /// 探测端点连通性：发送最小请求，200 即可用；持久化 test_status。
@@ -787,9 +830,13 @@ pub async fn generate_balance_template_with_ai(
     state: State<'_, AppState>,
     id: i64,
     ai_model: String,
-    sample: BalanceTemplateAiSample,
+    samples: Vec<BalanceTemplateAiSample>,
 ) -> AppResult<BalanceQueryConfig> {
-    if sample.sample.as_deref().unwrap_or("").trim().is_empty() {
+    let samples: Vec<BalanceTemplateAiSample> = samples
+        .into_iter()
+        .filter(|sample| !sample.sample.as_deref().unwrap_or("").trim().is_empty())
+        .collect();
+    if samples.is_empty() {
         return Err(AppError::InvalidArgument(
             "没有可用的余额接口返回样本，不能调用 AI 生成模板".into(),
         ));
@@ -826,7 +873,7 @@ pub async fn generate_balance_template_with_ai(
     let want = should_use_proxy(target.use_proxy, proxy_enabled, &proxy_url);
     let client = build_client(want, &proxy_url, Duration::from_secs(60))?;
     let format = UpstreamFormat::from_transformer_name(&target.transformer);
-    let prompt = balance_template_prompt(&target, &sample);
+    let prompt = balance_template_prompt(&target, &samples);
     let url = ai_chat_url(&target.api_url, format);
     let body = match format {
         UpstreamFormat::OpenAiChat => json!({

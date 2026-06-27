@@ -109,3 +109,23 @@
 - [x] Validate on the backend that the selected AI model belongs to the current endpoint.
 - [x] Expand built-in balance templates and name them by relay type or specific site name, such as `newapi`, `one-api`, `sub2api`, `voapi`, `newapi-token`, and `one-hub`.
 - [x] Verify with frontend tests, Rust tests, frontend build, Rust check, and the `3001` debug instance without touching the old `3000` instance.
+
+### Task 2038.17: Balance AI Multi-Sample and Multi-Quota Testing
+
+**Files:**
+- Modify: `src-tauri/src/models/endpoint.rs`
+- Modify: `src-tauri/src/commands/endpoint.rs`
+- Modify: `src-tauri/src/commands/web_admin.rs`
+- Modify: `src-tauri/src/lib.rs`
+- Modify: `src/services/modules/endpoint.ts`
+- Modify: `src/pages/Endpoints/_components/EndpointForm.tsx`
+- Modify: `src/pages/Endpoints/_components/EndpointCard.tsx`
+- Modify: `src/pages/Balances/index.tsx`
+- Modify: `src/__tests__/balanceConfig.test.tsx`
+
+- [x] Send every URL-reachable balance probe sample to AI instead of only the first sample.
+- [x] Let AI return multi-period quota paths under `extraction.limits`.
+- [x] Add manual editor controls for extra quota periods such as 3-hour, daily, and weekly limits.
+- [x] Add a "test current template" action in the endpoint balance tab so users can validate without saving first.
+- [x] Display extracted extra quota periods in test results, endpoint-card balance toasts, and the balance query page.
+- [x] Verify with frontend tests, Rust tests, frontend build, and Rust check.

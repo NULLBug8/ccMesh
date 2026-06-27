@@ -15,6 +15,7 @@ pub struct BalanceExtraction {
     pub currency_path: String,
     pub used_path: String,
     pub expires_at_path: String,
+    pub limits: Vec<BalanceLimitExtraction>,
 }
 
 impl Default for BalanceExtraction {
@@ -24,8 +25,18 @@ impl Default for BalanceExtraction {
             currency_path: "$.currency".into(),
             used_path: String::new(),
             expires_at_path: String::new(),
+            limits: Vec::new(),
         }
     }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct BalanceLimitExtraction {
+    pub label: String,
+    pub balance_path: String,
+    pub used_path: String,
+    pub expires_at_path: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
