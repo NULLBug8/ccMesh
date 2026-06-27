@@ -14,6 +14,8 @@ use crate::modules::storage::{config_repo, endpoint_repo};
 use crate::modules::transform::transformer::UpstreamFormat;
 use crate::state::AppState;
 
+const ENDPOINT_TEST_MAX_ATTEMPTS: usize = 3;
+
 /// 端点配置/测试状态变更事件（payload 为空，前端收到后全量重拉相关查询）。
 const ENDPOINTS_CHANGED_EVENT: &str = "endpoints-changed";
 
@@ -1265,6 +1267,37 @@ fn endpoint_test_kind(format: UpstreamFormat) -> &'static str {
     }
 }
 
+fn should_retry_endpoint_test_status(code: u16) -> bool {
+    matches!(code, 403 | 408 | 409 | 425 | 429 | 500..=599)
+}
+
+fn endpoint_test_http_error_message(code: u16, url: &str, model: &str, body: &str) -> String {
+    let sample = body.chars().take(200).collect::<String>();
+    match code {
+        400 => format!(
+            "测试失败：上游拒绝请求（HTTP 400）。通常是模型名、请求格式或端点类型不匹配；测试 URL: {url}，模型: {model}，响应前200字符: {sample}"
+        ),
+        401 => format!(
+            "测试失败：鉴权失败（HTTP 401）。请检查 API Key、鉴权方式和端点类型；测试 URL: {url}"
+        ),
+        403 => format!(
+            "测试失败：上游返回 HTTP 403。可能是 API Key 权限不足，也可能是站点临时风控/频率限制；如果同站点其他模型偶尔成功，请稍后重试或检查该模型权限。测试 URL: {url}，模型: {model}，响应前200字符: {sample}"
+        ),
+        404 => format!(
+            "测试失败：接口不存在（HTTP 404）。通常是 API 地址或端点类型不匹配；测试 URL: {url}"
+        ),
+        429 => format!(
+            "测试失败：上游限流或额度不足（HTTP 429）。请检查站点余额、频率限制或稍后重试；测试 URL: {url}，模型: {model}，响应前200字符: {sample}"
+        ),
+        500..=599 => format!(
+            "测试失败：上游服务异常（HTTP {code}）。端点已连通，但站点当前不稳定或接口报错；测试 URL: {url}，模型: {model}，响应前200字符: {sample}"
+        ),
+        _ => format!(
+            "测试失败：上游返回 HTTP {code}；测试 URL: {url}，模型: {model}，响应前200字符: {sample}"
+        ),
+    }
+}
+
 #[tauri::command]
 pub async fn test_endpoint(
     app: AppHandle,
@@ -1336,49 +1369,74 @@ pub async fn test_endpoint(
             None,
         ),
     };
-    let builder = ProbeAuth::primary_for(&ep.transformer)
-        .apply(client.post(&url), &ep.api_key)
-        .json(&body);
-
     let start = Instant::now();
-    let result = builder.send().await;
-    let latency_ms = start.elapsed().as_millis() as u64;
-
-    let (success, status, message) = match result {
-        Ok(resp) => {
-            let code = resp.status().as_u16();
-            if code == 200 && stream_marker.is_some() {
-                let marker = stream_marker.unwrap();
-                match resp.text().await {
-                    Ok(text) if text.contains(marker) => (
-                        true,
-                        "available",
-                        format!("测试成功：{} 流式响应完整，模型 {model} 可用", endpoint_test_kind(format)),
-                    ),
-                    Ok(text) => (
-                        false,
-                        "unavailable",
-                        format!(
-                            "测试失败：{} 返回 HTTP 200，但流式响应不完整，未看到结束标记 {marker}。通常是端点类型选错，或该站点不支持这个流式接口；测试 URL: {url}，模型: {model}，响应前200字符: {}",
-                            endpoint_test_kind(format),
-                            text.chars().take(200).collect::<String>()
-                        ),
-                    ),
-                    Err(e) => (
-                        false,
-                        "unavailable",
-                        format!("测试失败：已连接到 {url}，但读取流式响应失败: {e}"),
-                    ),
+    let mut attempt = 0usize;
+    let mut last_message = String::new();
+    let mut success = false;
+    let mut status = "unavailable";
+    while attempt < ENDPOINT_TEST_MAX_ATTEMPTS {
+        attempt += 1;
+        let request = ProbeAuth::primary_for(&ep.transformer)
+            .apply(client.post(&url), &ep.api_key)
+            .json(&body);
+        match request.send().await {
+            Ok(resp) => {
+                let code = resp.status().as_u16();
+                if code == 200 && stream_marker.is_some() {
+                    let marker = stream_marker.unwrap();
+                    match resp.text().await {
+                        Ok(text) if text.contains(marker) => {
+                            success = true;
+                            status = "available";
+                            last_message = format!(
+                                "测试成功：{} 流式响应完整，模型 {model} 可用",
+                                endpoint_test_kind(format)
+                            );
+                            break;
+                        }
+                        Ok(text) => {
+                            last_message = format!(
+                                "测试失败：{} 返回 HTTP 200，但流式响应不完整，未看到结束标记 {marker}。通常是端点类型选错，或该站点不支持这个流式接口；测试 URL: {url}，模型: {model}，响应前200字符: {}",
+                                endpoint_test_kind(format),
+                                text.chars().take(200).collect::<String>()
+                            );
+                            break;
+                        }
+                        Err(e) => {
+                            last_message =
+                                format!("测试失败：已连接到 {url}，但读取流式响应失败: {e}");
+                            break;
+                        }
+                    }
+                } else if code == 200 {
+                    success = true;
+                    status = "available";
+                    last_message = format!("测试成功：{url} 可连接，模型 {model} 可用");
+                    break;
                 }
-            } else if code == 200 {
-                (true, "available", "连接成功".to_string())
-            } else if code == 401 || code == 403 {
-                (false, "unavailable", format!("鉴权失败（HTTP {code}）"))
-            } else {
-                (false, "unavailable", format!("HTTP {code}"))
+
+                let text = resp.text().await.unwrap_or_default();
+                last_message = endpoint_test_http_error_message(code, &url, model, &text);
+                if !should_retry_endpoint_test_status(code) {
+                    break;
+                }
+            }
+            Err(e) => {
+                last_message = format!(
+                    "测试失败：无法连接到 {url}。请检查 API 地址、网络/代理和证书配置；错误: {e}"
+                );
+                break;
             }
         }
-        Err(e) => (false, "unavailable", format!("请求失败: {e}")),
+        if attempt < ENDPOINT_TEST_MAX_ATTEMPTS {
+            tokio::time::sleep(Duration::from_millis(350)).await;
+        }
+    }
+    let latency_ms = start.elapsed().as_millis() as u64;
+    let message = if success || attempt <= 1 {
+        last_message
+    } else {
+        format!("{last_message}（已重试 {attempt} 次）")
     };
 
     {
@@ -1618,6 +1676,35 @@ mod balance_probe_tests {
         assert_eq!(inferred.path, "/v1/usage");
         assert_eq!(inferred.extraction.balance_path, "$.remaining");
         assert!(balance_config_extracts_from_samples(&inferred, &samples));
+    }
+
+    #[test]
+    fn endpoint_test_403_message_explains_transient_or_permission_causes() {
+        let message = endpoint_test_http_error_message(
+            403,
+            "https://example.com/v1/responses",
+            "gpt-5.5",
+            r#"{"error":"forbidden"}"#,
+        );
+
+        assert!(message.contains("HTTP 403"));
+        assert!(message.contains("权限不足"));
+        assert!(message.contains("临时风控"));
+        assert!(should_retry_endpoint_test_status(403));
+    }
+
+    #[test]
+    fn endpoint_test_503_is_retryable_and_reported_as_upstream_unstable() {
+        let message = endpoint_test_http_error_message(
+            503,
+            "https://example.com/v1/responses",
+            "gpt-5.5",
+            r#"{"error":"busy"}"#,
+        );
+
+        assert!(message.contains("HTTP 503"));
+        assert!(message.contains("不稳定"));
+        assert!(should_retry_endpoint_test_status(503));
     }
 }
 

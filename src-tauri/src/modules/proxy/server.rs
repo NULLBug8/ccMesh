@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use axum::extract::State;
+use axum::extract::{DefaultBodyLimit, State};
 use axum::http::HeaderMap;
 use axum::routing::{get, post};
 use axum::{
@@ -23,6 +23,8 @@ use crate::modules::proxy::rotation::Rotation;
 use crate::modules::stats::aggregator::StatsAggregator;
 use crate::modules::storage::{config_repo, db::DbPool, endpoint_repo};
 use crate::modules::transform::thinking_rectifier::RectifierConfig;
+
+const PROXY_REQUEST_BODY_LIMIT_BYTES: usize = 64 * 1024 * 1024;
 
 #[cfg(test)]
 fn web_admin_root_asset_path(path: &str) -> Option<String> {
@@ -101,6 +103,7 @@ fn build_router(state: Arc<ProxyState>) -> Router {
         .route("/v1/models", get(models_route))
         .route("/v1/messages/count_tokens", post(count_tokens_route))
         .fallback(handle_proxy)
+        .layer(DefaultBodyLimit::max(PROXY_REQUEST_BODY_LIMIT_BYTES))
         .with_state(state)
 }
 
@@ -202,7 +205,7 @@ async fn stats_route() -> Response {
 
 #[cfg(test)]
 mod tests {
-    use super::web_admin_root_asset_path;
+    use super::{web_admin_root_asset_path, PROXY_REQUEST_BODY_LIMIT_BYTES};
 
     #[test]
     fn root_path_serves_web_admin_shell() {
@@ -217,6 +220,11 @@ mod tests {
         );
         assert_eq!(web_admin_root_asset_path("/v1/messages"), None);
         assert_eq!(web_admin_root_asset_path("/v1/chat/completions"), None);
+    }
+
+    #[test]
+    fn proxy_body_limit_allows_large_tool_payloads() {
+        assert!(PROXY_REQUEST_BODY_LIMIT_BYTES >= 64 * 1024 * 1024);
     }
 }
 
