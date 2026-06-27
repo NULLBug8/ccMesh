@@ -15,7 +15,7 @@ use crate::modules::storage::{config_repo, endpoint_repo};
 use crate::modules::transform::transformer::UpstreamFormat;
 use crate::state::AppState;
 
-const ENDPOINT_TEST_MAX_ATTEMPTS: usize = 3;
+const ENDPOINT_TEST_MAX_ATTEMPTS: usize = 5;
 
 /// 端点配置/测试状态变更事件（payload 为空，前端收到后全量重拉相关查询）。
 const ENDPOINTS_CHANGED_EVENT: &str = "endpoints-changed";
@@ -1276,6 +1276,40 @@ fn endpoint_test_http_error_message(code: u16, url: &str, model: &str, body: &st
     diagnose_upstream_error(code, body).format_for_endpoint_test(code, url, model)
 }
 
+async fn send_endpoint_probe(
+    client: &reqwest::Client,
+    transformer: &str,
+    api_key: &str,
+    url: &str,
+    body: &Value,
+    marker: Option<&str>,
+    kind: &str,
+    model: &str,
+) -> Result<(), String> {
+    let request = ProbeAuth::primary_for(transformer)
+        .apply(client.post(url), api_key)
+        .json(body);
+    let resp = request.send().await.map_err(|e| {
+        format!("测试失败：无法连接到 {url}。请检查 API 地址、网络、代理和证书配置；错误: {e}")
+    })?;
+    let code = resp.status().as_u16();
+    let text = resp.text().await.unwrap_or_default();
+    if code == 200 {
+        if let Some(marker) = marker {
+            if text.contains(marker) {
+                return Ok(());
+            }
+            let diag = diagnose_upstream_error(200, &text);
+            return Err(format!(
+                "测试失败：{kind} 返回 HTTP 200，但流式响应不完整，未看到结束标记 {marker}。{}。处理方式：{}。测试 URL: {url}，模型: {model}。依据：{}",
+                diag.reason, diag.action, diag.evidence
+            ));
+        }
+        return Ok(());
+    }
+    Err(endpoint_test_http_error_message(code, url, model, &text))
+}
+
 fn endpoint_test_probe(
     base: &str,
     format: UpstreamFormat,
@@ -1339,6 +1373,48 @@ fn endpoint_test_probe(
     }
 }
 
+fn endpoint_test_long_responses_probe(base: &str, model: &str) -> (String, Value, Option<&'static str>) {
+    let long_text = "长上下文测试 ".repeat(12_000);
+    (
+        format!("{base}/v1/responses"),
+        json!({
+            "model": model,
+            "instructions": "You are GPT. Read the input and return exactly OK.",
+            "max_output_tokens": 64,
+            "parallel_tool_calls": true,
+            "reasoning": { "effort": "medium" },
+            "store": false,
+            "stream": true,
+            "tools": [
+                {
+                    "type": "function",
+                    "name": "ccmesh_probe",
+                    "description": "Connectivity probe tool. Do not call unless needed.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": false
+                    },
+                    "strict": true
+                }
+            ],
+            "tool_choice": "auto",
+            "input": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": format!("请阅读下面内容后只回复 OK。\n{long_text}")
+                        }
+                    ]
+                }
+            ]
+        }),
+        Some("response.completed"),
+    )
+}
+
 #[tauri::command]
 pub async fn test_endpoint(
     app: AppHandle,
@@ -1383,6 +1459,8 @@ pub async fn test_endpoint(
     let mut last_message = String::new();
     let mut success = false;
     let mut status = "unavailable";
+    let require_all_stream_attempts = stream_marker.is_some();
+    let mut stream_successes = 0usize;
     while attempt < ENDPOINT_TEST_MAX_ATTEMPTS {
         attempt += 1;
         let request = ProbeAuth::primary_for(&ep.transformer)
@@ -1395,18 +1473,25 @@ pub async fn test_endpoint(
                     let marker = stream_marker.unwrap();
                     match resp.text().await {
                         Ok(text) if text.contains(marker) => {
-                            success = true;
-                            status = "available";
+                            stream_successes += 1;
                             last_message = format!(
-                                "测试成功：{} Codex 兼容流式探针响应完整，模型 {model} 可用。说明：该结果证明此端点支持当前测试覆盖的 Responses 流式基础参数；如果真实调用仍失败，请查看日志里的上游错误诊断，通常是工具、图片、超长上下文、reasoning 参数或站点额外限制导致。",
-                                endpoint_test_kind(format)
+                                "测试成功：{} 连续 {stream_successes} 次短流式探针响应完整，模型 {model} 当前可用。注意：这只证明短请求在本轮测试中稳定，真实长上下文/工具/图片请求仍以日志里的上游错误为准。",
+                                endpoint_test_kind(format),
                             );
-                            break;
+                            if !require_all_stream_attempts || attempt >= ENDPOINT_TEST_MAX_ATTEMPTS {
+                                success = true;
+                                status = "available";
+                                break;
+                            }
+                            if attempt < ENDPOINT_TEST_MAX_ATTEMPTS {
+                                tokio::time::sleep(Duration::from_millis(350)).await;
+                            }
+                            continue;
                         }
                         Ok(text) => {
                             let diag = diagnose_upstream_error(200, &text);
                             last_message = format!(
-                                "测试失败：{} 返回 HTTP 200，但流式响应不完整，未看到结束标记 {marker}。{}。处理方式：{}。如果“测试成功但实际调用失败”，请对比日志里的真实请求体：真实调用可能包含工具、图片、超长上下文、reasoning 参数或模型映射，和轻量测试请求不同。测试 URL: {url}，模型: {model}。依据：{}",
+                                "测试失败：{} 返回 HTTP 200，但流式响应不完整，未看到结束标记 {marker}。已成功 {stream_successes}/{attempt} 次，说明该端点流式表现不稳定。{}。处理方式：{}。测试 URL: {url}，模型: {model}。依据：{}",
                                 endpoint_test_kind(format),
                                 diag.reason,
                                 diag.action,
@@ -1445,10 +1530,38 @@ pub async fn test_endpoint(
         }
     }
     let latency_ms = start.elapsed().as_millis() as u64;
+    if success && matches!(format, UpstreamFormat::OpenAiResponses) {
+        let (long_url, long_body, long_marker) = endpoint_test_long_responses_probe(base, model);
+        match send_endpoint_probe(
+            &client,
+            &ep.transformer,
+            &ep.api_key,
+            &long_url,
+            &long_body,
+            long_marker,
+            endpoint_test_kind(format),
+            model,
+        )
+        .await
+        {
+            Ok(()) => {
+                last_message = format!(
+                    "{last_message} 长上下文探针也已通过，说明该模型当前可处理更接近真实 Codex 的较长输入。"
+                );
+            }
+            Err(message) => {
+                success = false;
+                status = "unavailable";
+                last_message = format!(
+                    "测试失败：短流式探针已连续通过，但长上下文探针失败。{message}"
+                );
+            }
+        }
+    }
     let message = if success || attempt <= 1 {
         last_message
     } else {
-        format!("{last_message}（已重试 {attempt} 次）")
+        format!("{last_message}（本轮共尝试 {attempt} 次）")
     };
 
     {
@@ -1788,6 +1901,48 @@ data: {"code":"InvalidParameter","message":"<400> InternalError.Algo.InvalidPara
         assert!(message.contains("tool_choice"));
         assert!(message.contains("tools"));
         assert!(message.contains("去掉 tool_choice"));
+    }
+
+    #[test]
+    fn endpoint_test_workspace_error_tells_user_to_bind_business_workspace() {
+        let message = endpoint_test_http_error_message(
+            200,
+            "https://vsllm.com/v1/responses",
+            "qwen3.7-max",
+            r#"event:
+data: {"code":"InvalidParameter","message":"Missing required parameter: 'workspaceid'. Please ensure your API key is bound to a business workspace. You can manage your workspace bindings at: https://bailian.console.aliyun.com/cn-beijing?tab=globalset#/efm/api_key","request_id":"x"}"#,
+        );
+
+        assert!(message.contains("workspaceid"));
+        assert!(message.contains("业务空间"));
+        assert!(message.contains("API Key"));
+        assert!(!message.contains("上游返回 HTTP 200。处理方式：查看返回体原文"));
+    }
+
+    #[test]
+    fn endpoint_test_workspace_stream_error_mentions_unstable_attempts() {
+        let diag = diagnose_upstream_error(
+            200,
+            r#"event:
+data: {"code":"InvalidParameter","message":"Missing required parameter: 'workspaceid'. Please ensure your API key is bound to a business workspace.","request_id":"x"}"#,
+        );
+        let message = format!(
+            "测试失败：{} 返回 HTTP 200，但流式响应不完整，未看到结束标记 {}。已成功 {}/{} 次，说明该端点流式表现不稳定。{}。处理方式：{}。测试 URL: {}，模型: {}。依据：{}",
+            endpoint_test_kind(UpstreamFormat::OpenAiResponses),
+            "response.completed",
+            1,
+            2,
+            diag.reason,
+            diag.action,
+            "https://vsllm.com/v1/responses",
+            "qwen3.7-max",
+            diag.evidence
+        );
+
+        assert!(message.contains("已成功 1/2 次"));
+        assert!(message.contains("流式表现不稳定"));
+        assert!(message.contains("workspaceid"));
+        assert!(message.contains("业务空间"));
     }
 }
 

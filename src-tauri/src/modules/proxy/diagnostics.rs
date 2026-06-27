@@ -65,6 +65,14 @@ pub fn diagnose_upstream_error(status: u16, body: &str) -> UpstreamDiagnostic {
         };
     }
 
+    if contains_any(&haystack, &["workspaceid", "workspace id", "business workspace"]) {
+        return UpstreamDiagnostic {
+            reason: "上游要求绑定或传入阿里百炼业务空间 workspaceid".into(),
+            action: "到阿里百炼控制台检查该 API Key 是否已绑定业务空间；如果站点要求请求中带 workspaceid，请在该端点的请求参数/模型配置里补齐对应 workspaceid，或改用已正确绑定业务空间的 API Key 后重新测试".into(),
+            evidence,
+        };
+    }
+
     if contains_any(
         &haystack,
         &[
@@ -93,6 +101,7 @@ pub fn diagnose_upstream_error(status: u16, body: &str) -> UpstreamDiagnostic {
             "balance",
             "credit",
             "billing",
+            "insufficient_user_quota",
             "额度",
             "余额",
             "欠费",
@@ -346,6 +355,20 @@ mod tests {
         assert!(diag.reason.contains("tools"));
         assert!(diag.action.contains("去掉 tool_choice"));
         assert!(diag.evidence.contains("tools"));
+    }
+
+    #[test]
+    fn diagnoses_workspace_binding_error_before_generic_http_200() {
+        let diag = diagnose_upstream_error(
+            200,
+            r#"event:
+data: {"code":"InvalidParameter","message":"Missing required parameter: 'workspaceid'. Please ensure your API key is bound to a business workspace. You can manage your workspace bindings at: https://bailian.console.aliyun.com/cn-beijing?tab=globalset#/efm/api_key","request_id":"x"}"#,
+        );
+
+        assert!(diag.reason.contains("workspaceid"));
+        assert!(diag.reason.contains("业务空间"));
+        assert!(diag.action.contains("API Key"));
+        assert!(diag.action.contains("业务空间"));
     }
 
     #[test]
