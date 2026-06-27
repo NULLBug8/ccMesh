@@ -404,6 +404,44 @@ fn sanitize_balance_sample(raw: &str, ep: &Endpoint) -> String {
     sample
 }
 
+fn is_usable_balance_ai_sample(raw: &str) -> bool {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    let lowered = trimmed.to_ascii_lowercase();
+    if lowered.starts_with("<!doctype") || lowered.starts_with("<html") {
+        return false;
+    }
+    let Ok(json) = serde_json::from_str::<serde_json::Value>(trimmed) else {
+        return false;
+    };
+    if json
+        .get("success")
+        .and_then(|value| value.as_bool())
+        .is_some_and(|success| !success)
+    {
+        return false;
+    }
+    let rendered = json.to_string().to_ascii_lowercase();
+    let auth_error_markers = [
+        "unauthorized",
+        "invalid access token",
+        "invalid token",
+        "access token",
+        "login",
+        "not logged in",
+        "forbidden",
+    ];
+    if auth_error_markers
+        .iter()
+        .any(|marker| rendered.contains(marker))
+    {
+        return false;
+    }
+    true
+}
+
 async fn run_balance_query(
     client: &reqwest::Client,
     ep: &Endpoint,
@@ -493,7 +531,13 @@ fn classify_balance_probe_results(results: Vec<BalanceProbeTemplateResult>) -> B
     } else {
         results
             .iter()
-            .filter(|item| item.url_reachable && item.sample.is_some())
+            .filter(|item| {
+                item.url_reachable
+                    && item
+                        .sample
+                        .as_deref()
+                        .is_some_and(is_usable_balance_ai_sample)
+            })
             .cloned()
             .map(|mut item| {
                 item.sample = item.sample.as_deref().map(sanitize_sample_text);
@@ -1091,6 +1135,21 @@ mod balance_probe_tests {
         }
     }
 
+    fn probe_result_with_sample(template_id: &str, sample: &str) -> BalanceProbeTemplateResult {
+        BalanceProbeTemplateResult {
+            template_id: template_id.to_string(),
+            path: "/api/user/self".to_string(),
+            success: false,
+            url_reachable: true,
+            status_code: Some(200),
+            latency_ms: 1,
+            message: "test".to_string(),
+            sample: Some(sample.to_string()),
+            config: None,
+            balance: None,
+        }
+    }
+
     #[test]
     fn classify_probe_prefers_matched_template() {
         let result = classify_balance_probe_results(vec![
@@ -1127,6 +1186,21 @@ mod balance_probe_tests {
         let result = classify_balance_probe_results(vec![
             probe_result("openai-credit-grants", false, false),
             probe_result("newapi-user-self", false, false),
+        ]);
+
+        assert_eq!(result.status, "allFailed");
+        assert!(result.matched.is_none());
+        assert!(result.usable_samples.is_empty());
+    }
+
+    #[test]
+    fn classify_probe_filters_html_and_auth_error_samples_from_ai() {
+        let result = classify_balance_probe_results(vec![
+            probe_result_with_sample("openai", "<!doctype html><html></html>"),
+            probe_result_with_sample(
+                "newapi",
+                r#"{"success":false,"message":"Unauthorized, invalid access token"}"#,
+            ),
         ]);
 
         assert_eq!(result.status, "allFailed");

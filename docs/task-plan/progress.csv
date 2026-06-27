@@ -98,3 +98,4 @@
 执行,页面布局/规则配置/日志详情/Web配置台,2038.15,余额模板智能识别与AI生成,全栈,2038.11,1,完成,codex,2026-06-27,2026-06-27,新增内置模板探测/全失败自定义路径复探/脱敏样本AI生成模板；npm test、cargo test、npm run build、cargo check和3001浏览器验证通过
 执行,页面布局/规则配置/日志详情/Web配置台,2038.16,余额AI模型作用域与模板扩充,全栈,2038.15,1,完成,codex,2026-06-27,2026-06-27,AI识别改为选择当前站点模型并校验模型归属；扩充newapi/one-api/sub2api/voapi/newapi-token/one-hub模板；npm test、cargo test、npm run build、cargo check和3001调试验证通过
 执行,页面布局/规则配置/日志详情/Web配置台,2038.17,余额AI多样本识别与多周期额度测试,全栈,2038.16,1,完成,codex,2026-06-27,2026-06-27,AI识别改为接收全部URL可达样本；新增extraction.limits多周期额度；端点余额编辑页支持保存前测试当前模板；npm test、cargo test、npm run build、cargo check通过
+执行,页面布局/规则配置/日志详情/Web配置台,2038.18,余额AI样本质量门禁,全栈,2038.17,1,完成,codex,2026-06-27,2026-06-27,过滤HTML页面/登录页/鉴权失败JSON，避免无效返回样本进入AI；URL有返回但无可用余额样本时阻止AI生成；npm test、cargo test、npm run build、cargo check和3001实测通过

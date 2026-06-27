@@ -48,3 +48,7 @@ created_at: 2026-06-24
 - AI-assisted balance template generation now receives all URL-reachable probe samples, so the model can choose the best balance endpoint instead of being forced to use the first returned sample.
 - Balance extraction supports additional quota periods through `extraction.limits`, allowing 3-hour, daily, weekly, or similar limits to be identified and displayed.
 - Endpoint balance editing now includes a "test current template" action that runs the unsaved template against the current endpoint before saving.
+
+## 2026-06-27 Balance AI sample quality gate
+- Probe responses that are HTML pages, login pages, or authorization error JSON are no longer sent to AI as balance samples.
+- When URLs return data but none is usable balance data, the endpoint balance tab now blocks AI generation and explains that no AI-usable balance sample was found.

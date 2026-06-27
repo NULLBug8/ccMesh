@@ -194,6 +194,47 @@ describe("Endpoint balance template assistant", () => {
     expect(screen.queryByRole("button", { name: "让 AI 生成模板" })).not.toBeInTheDocument();
   });
 
+  it("does not offer AI generation when URLs only return login or auth error samples", async () => {
+    vi.spyOn(endpointApi, "probeBalanceTemplates").mockResolvedValueOnce({
+      status: "allFailed",
+      results: [
+        {
+          templateId: "openai",
+          path: "/dashboard/billing/credit_grants",
+          success: false,
+          urlReachable: true,
+          statusCode: 200,
+          latencyMs: 12,
+          message: "返回的是 HTML 页面，不是余额 JSON",
+          sample: "<!doctype html><html></html>",
+          config: null,
+          balance: null,
+        },
+        {
+          templateId: "newapi",
+          path: "/api/user/self",
+          success: false,
+          urlReachable: true,
+          statusCode: 200,
+          latencyMs: 18,
+          message: "鉴权失败，不能作为 AI 样本",
+          sample: "{\"success\":false,\"message\":\"Unauthorized, invalid access token\"}",
+          config: null,
+          balance: null,
+        },
+      ],
+      matched: null,
+      usableSamples: [],
+    });
+
+    renderEndpointForm();
+    await openBalanceTab();
+    fireEvent.click(await screen.findByRole("button", { name: "智能识别余额模板" }));
+
+    expect(await screen.findByText("模板 URL 有返回，但没有可用于 AI 的余额样本")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "让 AI 生成模板" })).not.toBeInTheDocument();
+  });
+
   it("applies the matched template when a probe extracts balance", async () => {
     vi.spyOn(endpointApi, "probeBalanceTemplates").mockResolvedValueOnce({
       status: "matched",

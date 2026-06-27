@@ -295,6 +295,7 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
   const aiModels = Array.from(
     new Set([form.model, ...(form.models ?? [])].map((m) => m.trim()).filter(Boolean)),
   );
+  const hasReachableBalanceProbe = balanceProbe?.results.some((item) => item.urlReachable) ?? false;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -529,7 +530,9 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
 
                   {balanceProbe.status === "allFailed" ? (
                     <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                      全部模板 URL 都没有请求成功
+                      {hasReachableBalanceProbe
+                        ? "模板 URL 有返回，但没有可用于 AI 的余额样本"
+                        : "全部模板 URL 都没有请求成功"}
                     </div>
                   ) : null}
 

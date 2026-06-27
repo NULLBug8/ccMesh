@@ -129,3 +129,14 @@
 - [x] Add a "test current template" action in the endpoint balance tab so users can validate without saving first.
 - [x] Display extracted extra quota periods in test results, endpoint-card balance toasts, and the balance query page.
 - [x] Verify with frontend tests, Rust tests, frontend build, and Rust check.
+
+### Task 2038.18: Balance AI Sample Quality Gate
+
+**Files:**
+- Modify: `src-tauri/src/commands/endpoint.rs`
+- Modify: `src/pages/Endpoints/_components/EndpointForm.tsx`
+- Modify: `src/__tests__/balanceConfig.test.tsx`
+
+- [x] Prevent HTML pages, login pages, and authorization error JSON from being sent to AI as balance samples.
+- [x] Show a distinct message when probe URLs return data but none of it is usable balance data.
+- [x] Verify against the live `3001` debug instance that the current endpoint no longer exposes AI generation for invalid samples.
