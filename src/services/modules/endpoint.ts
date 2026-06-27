@@ -184,6 +184,123 @@ export const BALANCE_QUERY_PRESETS: BalanceQueryConfig[] = [
       limits: [],
     },
   },
+  {
+    enabled: true,
+    templateId: "newapi-user-key",
+    method: "GET",
+    path: "/api/user/self",
+    headers: [
+      { name: "New-Api-User", value: "{{apiKey}}" },
+      { name: "Accept", value: "application/json" },
+    ],
+    body: "",
+    extraction: {
+      balancePath: "$.data.quota",
+      currencyPath: "$.data.currency",
+      usedPath: "$.data.used_quota",
+      expiresAtPath: "",
+      limits: [],
+    },
+  },
+  {
+    enabled: true,
+    templateId: "crazyrouter",
+    method: "GET",
+    path: "/api/user/self",
+    headers: [
+      { name: "Authorization", value: "Bearer {{apiKey}}" },
+      { name: "Accept", value: "application/json" },
+    ],
+    body: "",
+    extraction: {
+      balancePath: "$.data.quota / 500000",
+      currencyPath: "",
+      usedPath: "$.data.used_quota / 500000",
+      expiresAtPath: "",
+      limits: [],
+    },
+  },
+  {
+    enabled: true,
+    templateId: "cafecode",
+    method: "GET",
+    path: "/v1/usage",
+    headers: [{ name: "Authorization", value: "Bearer {{apiKey}}" }],
+    body: "",
+    extraction: {
+      balancePath: "$.remaining",
+      currencyPath: "$.unit",
+      usedPath: "$.usage.today.actual_cost",
+      expiresAtPath: "$.subscription.expires_at",
+      limits: [
+        {
+          label: "今日额度",
+          balancePath: "$.subscription.daily_limit_usd - $.subscription.daily_usage_usd",
+          usedPath: "$.subscription.daily_usage_usd",
+          expiresAtPath: "$.subscription.expires_at",
+        },
+        {
+          label: "每周额度",
+          balancePath: "$.subscription.weekly_limit_usd - $.subscription.weekly_usage_usd",
+          usedPath: "$.subscription.weekly_usage_usd",
+          expiresAtPath: "$.subscription.expires_at",
+        },
+        {
+          label: "每月额度",
+          balancePath: "$.subscription.monthly_limit_usd - $.subscription.monthly_usage_usd",
+          usedPath: "$.subscription.monthly_usage_usd",
+          expiresAtPath: "$.subscription.expires_at",
+        },
+      ],
+    },
+  },
+  {
+    enabled: true,
+    templateId: "tokenfor-me",
+    method: "GET",
+    path: "/v1/usage",
+    headers: [{ name: "Authorization", value: "Bearer {{apiKey}}" }],
+    body: "",
+    extraction: {
+      balancePath: "$.remaining",
+      currencyPath: "$.unit",
+      usedPath: "$.usage.today.actual_cost",
+      expiresAtPath: "$.subscription.expires_at",
+      limits: [
+        {
+          label: "今日额度",
+          balancePath: "$.subscription.daily_limit_usd - $.subscription.daily_usage_usd",
+          usedPath: "$.subscription.daily_usage_usd",
+          expiresAtPath: "$.subscription.expires_at",
+        },
+        {
+          label: "每周额度",
+          balancePath: "$.subscription.weekly_limit_usd - $.subscription.weekly_usage_usd",
+          usedPath: "$.subscription.weekly_usage_usd",
+          expiresAtPath: "$.subscription.expires_at",
+        },
+      ],
+    },
+  },
+  {
+    enabled: true,
+    templateId: "laozhang",
+    method: "GET",
+    path: "/api/user/self",
+    headers: [
+      { name: "Authorization", value: "{{apiKey}}" },
+      { name: "Accept", value: "application/json" },
+      { name: "Content-Type", value: "application/json" },
+    ],
+    body: "",
+    extraction: {
+      balancePath: "$.data.quota",
+      currencyPath: "",
+      usedPath: "$.data.used_quota",
+      expiresAtPath: "",
+      limits: [],
+    },
+  },
 ];
 
 export const DEFAULT_BALANCE_QUERY = BALANCE_QUERY_PRESETS[0];

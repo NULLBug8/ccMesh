@@ -304,6 +304,33 @@ fn empty_candidates_message(model: Option<&str>, breaker_exhausted: bool) -> Str
     }
 }
 
+fn should_route_responses_via_chat(
+    inbound_responses: bool,
+    client_wants_stream: bool,
+    format: UpstreamFormat,
+) -> bool {
+    if !inbound_responses {
+        return false;
+    }
+    matches!(format, UpstreamFormat::OpenAiChat)
+        || (client_wants_stream && matches!(format, UpstreamFormat::OpenAiResponses))
+}
+
+fn any_endpoint_declares_model(enabled: &[Endpoint], model: &str) -> bool {
+    enabled.iter().any(|ep| {
+        resolver::advertised_models(ep)
+            .iter()
+            .any(|item| item.trim().eq_ignore_ascii_case(model.trim()))
+    })
+}
+
+fn response_is_event_stream(headers: &HeaderMap) -> bool {
+    headers
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.to_ascii_lowercase().contains("text/event-stream"))
+}
+
 fn urldecode(s: &str) -> String {
     let bytes = s.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
@@ -481,6 +508,9 @@ pub async fn handle_proxy(
             }
         }
 
+        let any_declared = model
+            .as_deref()
+            .is_some_and(|m| any_endpoint_declares_model(&enabled, m));
         let filtered = resolver::filter_by_model(&enabled, model.as_deref());
         let filtered = resolver::order_candidates_for_model_mapping(
             &filtered,
@@ -511,6 +541,12 @@ pub async fn handle_proxy(
                         "以下端点未声明该模型，已过滤"
                     );
                 }
+            } else if after_count == before_count && before_count > 0 && any_declared {
+                tracing::debug!(
+                    model = m,
+                    candidates = after_count,
+                    "模型过滤：全部候选均声明该模型"
+                );
             } else if after_count == before_count && before_count > 0 {
                 tracing::debug!(
                     model = m,
@@ -654,7 +690,8 @@ pub async fn handle_proxy(
         // Responses 入站+codex 端点 → 透传（仅改 model）；其余（OpenAI 入站透传、Claude 直通）不转换。
         let needs_transform =
             !inbound_openai && !inbound_responses && matches!(format, UpstreamFormat::OpenAiChat);
-        let responses_to_chat = inbound_responses && matches!(format, UpstreamFormat::OpenAiChat);
+        let responses_to_chat =
+            should_route_responses_via_chat(inbound_responses, client_wants_stream, format);
         let attempt_body: Bytes = if needs_transform {
             // Claude → OpenAI（transform_request 内部按出站模型覆盖，空则透传客户端 model）
             match &body_json {
@@ -809,6 +846,41 @@ pub async fn handle_proxy(
                 meta.first_byte_ms = Some(chrono::Utc::now().timestamp_millis() - started_ms);
                 meta.actual_model = actual_model;
                 if status == 200 {
+                    if responses_to_chat
+                        && client_wants_stream
+                        && !response_is_event_stream(resp.headers())
+                    {
+                        let upstream_trace_headers = trace_capture::capture_headers(resp.headers());
+                        let err_bytes = resp.bytes().await.unwrap_or_default();
+                        let err_text = String::from_utf8_lossy(&err_bytes);
+                        let trace_body = trace_capture::capture_body(&err_bytes);
+                        set_upstream_trace(
+                            &mut meta,
+                            status,
+                            upstream_trace_headers,
+                            trace_body,
+                        );
+                        last_request_meta = Some(meta);
+                        last_status = Some(status);
+                        last_error_body = error_body_from_bytes(&err_bytes);
+                        last_err = format!(
+                            "上游未返回 SSE 流，无法转换为 Responses 流式响应: {}",
+                            truncate_error_body(&err_text)
+                        );
+                        if st.breakers.record_failure(
+                            &ep.name,
+                            used_permit,
+                            Instant::now(),
+                            "upstream returned non-SSE body for stream request",
+                        ) {
+                            st.stats.emit_health_changed();
+                        }
+                        if !use_specific {
+                            st.rotation.advance(n);
+                        }
+                        attempts_on_current = 0;
+                        continue;
+                    }
                     // 成功：闭合熔断（半开恢复时回传许可）；转换则通知前端
                     if st.breakers.record_success(&ep.name, used_permit) {
                         st.stats.emit_health_changed();
@@ -1383,7 +1455,11 @@ fn stream_transform_response(
 
 #[cfg(test)]
 mod tests {
-    use super::{empty_candidates_message, error_body_from_bytes, truncate_error_body};
+    use super::{
+        empty_candidates_message, error_body_from_bytes, should_route_responses_via_chat,
+        truncate_error_body,
+    };
+    use crate::modules::transform::transformer::UpstreamFormat;
     use axum::body::Bytes;
 
     #[test]
@@ -1402,6 +1478,30 @@ mod tests {
     fn error_body_from_bytes_keeps_small_body() {
         let body = error_body_from_bytes(&Bytes::from_static(br#"{"error":"x"}"#));
         assert_eq!(body.as_deref(), Some(r#"{"error":"x"}"#));
+    }
+
+    #[test]
+    fn responses_stream_routes_responses_endpoints_via_chat() {
+        assert!(should_route_responses_via_chat(
+            true,
+            true,
+            UpstreamFormat::OpenAiResponses
+        ));
+        assert!(should_route_responses_via_chat(
+            true,
+            true,
+            UpstreamFormat::OpenAiChat
+        ));
+        assert!(!should_route_responses_via_chat(
+            true,
+            false,
+            UpstreamFormat::OpenAiResponses
+        ));
+        assert!(!should_route_responses_via_chat(
+            false,
+            true,
+            UpstreamFormat::OpenAiResponses
+        ));
     }
 
     #[test]

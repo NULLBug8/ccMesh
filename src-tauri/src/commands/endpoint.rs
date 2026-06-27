@@ -197,6 +197,20 @@ fn json_path_value(json: &serde_json::Value, path: &str) -> Option<String> {
     if trimmed.is_empty() {
         return None;
     }
+    for operator in [" - ", " + ", " * ", " / "] {
+        if let Some((left, right)) = trimmed.split_once(operator) {
+            let left = json_path_number_operand(json, left)?;
+            let right = json_path_number_operand(json, right)?;
+            let value = match operator {
+                " - " => left - right,
+                " + " => left + right,
+                " * " => left * right,
+                " / " => left / right,
+                _ => return None,
+            };
+            return Some(format_decimal(value));
+        }
+    }
     let mut current = json;
     let path = trimmed
         .strip_prefix("$.")
@@ -209,7 +223,7 @@ fn json_path_value(json: &serde_json::Value, path: &str) -> Option<String> {
         if key.is_empty() {
             return None;
         }
-        current = current.get(key)?;
+        current = json_path_segment_value(current, key)?;
     }
     match current {
         serde_json::Value::Null => None,
@@ -354,7 +368,169 @@ fn balance_query_presets() -> Vec<BalanceQueryConfig> {
                 limits: Vec::new(),
             },
         },
+        BalanceQueryConfig {
+            enabled: true,
+            template_id: "newapi-user-key".into(),
+            method: "GET".into(),
+            path: "/api/user/self".into(),
+            headers: vec![
+                crate::models::endpoint::BalanceHeader {
+                    name: "New-Api-User".into(),
+                    value: "{{apiKey}}".into(),
+                },
+                crate::models::endpoint::BalanceHeader {
+                    name: "Accept".into(),
+                    value: "application/json".into(),
+                },
+            ],
+            body: String::new(),
+            extraction: crate::models::endpoint::BalanceExtraction {
+                balance_path: "$.data.quota".into(),
+                currency_path: "$.data.currency".into(),
+                used_path: "$.data.used_quota".into(),
+                expires_at_path: String::new(),
+                limits: Vec::new(),
+            },
+        },
+        BalanceQueryConfig {
+            enabled: true,
+            template_id: "crazyrouter".into(),
+            method: "GET".into(),
+            path: "/api/user/self".into(),
+            headers: vec![
+                crate::models::endpoint::BalanceHeader {
+                    name: "Authorization".into(),
+                    value: "Bearer {{apiKey}}".into(),
+                },
+                crate::models::endpoint::BalanceHeader {
+                    name: "Accept".into(),
+                    value: "application/json".into(),
+                },
+            ],
+            body: String::new(),
+            extraction: crate::models::endpoint::BalanceExtraction {
+                balance_path: "$.data.quota / 500000".into(),
+                currency_path: String::new(),
+                used_path: "$.data.used_quota / 500000".into(),
+                expires_at_path: String::new(),
+                limits: Vec::new(),
+            },
+        },
+        BalanceQueryConfig {
+            enabled: true,
+            template_id: "cafecode".into(),
+            method: "GET".into(),
+            path: "/v1/usage".into(),
+            headers: vec![crate::models::endpoint::BalanceHeader {
+                name: "Authorization".into(),
+                value: "Bearer {{apiKey}}".into(),
+            }],
+            body: String::new(),
+            extraction: crate::models::endpoint::BalanceExtraction {
+                balance_path: "$.remaining".into(),
+                currency_path: "$.unit".into(),
+                used_path: "$.usage.today.actual_cost".into(),
+                expires_at_path: "$.subscription.expires_at".into(),
+                limits: vec![
+                    crate::models::endpoint::BalanceLimitExtraction {
+                        label: "今日额度".into(),
+                        balance_path:
+                            "$.subscription.daily_limit_usd - $.subscription.daily_usage_usd"
+                                .into(),
+                        used_path: "$.subscription.daily_usage_usd".into(),
+                        expires_at_path: "$.subscription.expires_at".into(),
+                    },
+                    crate::models::endpoint::BalanceLimitExtraction {
+                        label: "每周额度".into(),
+                        balance_path:
+                            "$.subscription.weekly_limit_usd - $.subscription.weekly_usage_usd"
+                                .into(),
+                        used_path: "$.subscription.weekly_usage_usd".into(),
+                        expires_at_path: "$.subscription.expires_at".into(),
+                    },
+                    crate::models::endpoint::BalanceLimitExtraction {
+                        label: "每月额度".into(),
+                        balance_path:
+                            "$.subscription.monthly_limit_usd - $.subscription.monthly_usage_usd"
+                                .into(),
+                        used_path: "$.subscription.monthly_usage_usd".into(),
+                        expires_at_path: "$.subscription.expires_at".into(),
+                    },
+                ],
+            },
+        },
+        BalanceQueryConfig {
+            enabled: true,
+            template_id: "tokenfor-me".into(),
+            method: "GET".into(),
+            path: "/v1/usage".into(),
+            headers: vec![crate::models::endpoint::BalanceHeader {
+                name: "Authorization".into(),
+                value: "Bearer {{apiKey}}".into(),
+            }],
+            body: String::new(),
+            extraction: crate::models::endpoint::BalanceExtraction {
+                balance_path: "$.remaining".into(),
+                currency_path: "$.unit".into(),
+                used_path: "$.usage.today.actual_cost".into(),
+                expires_at_path: "$.subscription.expires_at".into(),
+                limits: vec![
+                    crate::models::endpoint::BalanceLimitExtraction {
+                        label: "今日额度".into(),
+                        balance_path:
+                            "$.subscription.daily_limit_usd - $.subscription.daily_usage_usd"
+                                .into(),
+                        used_path: "$.subscription.daily_usage_usd".into(),
+                        expires_at_path: "$.subscription.expires_at".into(),
+                    },
+                    crate::models::endpoint::BalanceLimitExtraction {
+                        label: "每周额度".into(),
+                        balance_path:
+                            "$.subscription.weekly_limit_usd - $.subscription.weekly_usage_usd"
+                                .into(),
+                        used_path: "$.subscription.weekly_usage_usd".into(),
+                        expires_at_path: "$.subscription.expires_at".into(),
+                    },
+                ],
+            },
+        },
+        BalanceQueryConfig {
+            enabled: true,
+            template_id: "laozhang".into(),
+            method: "GET".into(),
+            path: "/api/user/self".into(),
+            headers: vec![
+                crate::models::endpoint::BalanceHeader {
+                    name: "Authorization".into(),
+                    value: "{{apiKey}}".into(),
+                },
+                crate::models::endpoint::BalanceHeader {
+                    name: "Accept".into(),
+                    value: "application/json".into(),
+                },
+                crate::models::endpoint::BalanceHeader {
+                    name: "Content-Type".into(),
+                    value: "application/json".into(),
+                },
+            ],
+            body: String::new(),
+            extraction: crate::models::endpoint::BalanceExtraction {
+                balance_path: "$.data.quota".into(),
+                currency_path: String::new(),
+                used_path: "$.data.used_quota".into(),
+                expires_at_path: String::new(),
+                limits: Vec::new(),
+            },
+        },
     ]
+}
+
+fn json_path_number_operand(json: &serde_json::Value, operand: &str) -> Option<f64> {
+    let trimmed = operand.trim();
+    if let Ok(value) = trimmed.parse::<f64>() {
+        return Some(value);
+    }
+    json_path_value(json, trimmed)?.parse::<f64>().ok()
 }
 
 fn sanitize_json_sample(value: &mut serde_json::Value) {
@@ -751,6 +927,115 @@ fn parse_ai_balance_config(text: &str) -> AppResult<BalanceQueryConfig> {
     Ok(cfg)
 }
 
+fn balance_config_extracts_from_samples(
+    cfg: &BalanceQueryConfig,
+    samples: &[BalanceTemplateAiSample],
+) -> bool {
+    samples.iter().any(|sample| {
+        let Some(raw) = sample.sample.as_deref() else {
+            return false;
+        };
+        let Ok(json) = serde_json::from_str::<serde_json::Value>(raw) else {
+            return false;
+        };
+        json_path_value(&json, &cfg.extraction.balance_path).is_some()
+            || cfg.extraction.limits.iter().any(|limit| {
+                json_path_value(&json, &limit.balance_path).is_some()
+                    || json_path_value(&json, &limit.used_path).is_some()
+            })
+    })
+}
+
+fn infer_balance_config_from_samples(
+    samples: &[BalanceTemplateAiSample],
+) -> Option<BalanceQueryConfig> {
+    for sample in samples {
+        let Some(raw) = sample.sample.as_deref() else {
+            continue;
+        };
+        let Ok(json) = serde_json::from_str::<serde_json::Value>(raw) else {
+            continue;
+        };
+        if json_path_value(&json, "$.remaining").is_some()
+            && json_path_value(&json, "$.subscription.daily_limit_usd").is_some()
+        {
+            return Some(usage_balance_config(&sample.path));
+        }
+        if json_path_value(&json, "$.data.quota").is_some() {
+            return Some(newapi_like_balance_config(&sample.path, "$.data.quota"));
+        }
+        if json_path_value(&json, "$.data.balance").is_some() {
+            return Some(newapi_like_balance_config(&sample.path, "$.data.balance"));
+        }
+    }
+    None
+}
+
+fn usage_balance_config(path: &str) -> BalanceQueryConfig {
+    BalanceQueryConfig {
+        enabled: true,
+        template_id: "usage-auto".into(),
+        method: "GET".into(),
+        path: path.into(),
+        headers: vec![crate::models::endpoint::BalanceHeader {
+            name: "Authorization".into(),
+            value: "Bearer {{apiKey}}".into(),
+        }],
+        body: String::new(),
+        extraction: crate::models::endpoint::BalanceExtraction {
+            balance_path: "$.remaining".into(),
+            currency_path: "$.unit".into(),
+            used_path: "$.usage.today.actual_cost".into(),
+            expires_at_path: "$.subscription.expires_at".into(),
+            limits: vec![
+                crate::models::endpoint::BalanceLimitExtraction {
+                    label: "今日额度".into(),
+                    balance_path: "$.subscription.daily_limit_usd - $.subscription.daily_usage_usd"
+                        .into(),
+                    used_path: "$.subscription.daily_usage_usd".into(),
+                    expires_at_path: "$.subscription.expires_at".into(),
+                },
+                crate::models::endpoint::BalanceLimitExtraction {
+                    label: "每周额度".into(),
+                    balance_path:
+                        "$.subscription.weekly_limit_usd - $.subscription.weekly_usage_usd".into(),
+                    used_path: "$.subscription.weekly_usage_usd".into(),
+                    expires_at_path: "$.subscription.expires_at".into(),
+                },
+                crate::models::endpoint::BalanceLimitExtraction {
+                    label: "每月额度".into(),
+                    balance_path:
+                        "$.subscription.monthly_limit_usd - $.subscription.monthly_usage_usd"
+                            .into(),
+                    used_path: "$.subscription.monthly_usage_usd".into(),
+                    expires_at_path: "$.subscription.expires_at".into(),
+                },
+            ],
+        },
+    }
+}
+
+fn newapi_like_balance_config(path: &str, balance_path: &str) -> BalanceQueryConfig {
+    BalanceQueryConfig {
+        enabled: true,
+        template_id: "relay-auto".into(),
+        method: "GET".into(),
+        path: path.into(),
+        headers: vec![crate::models::endpoint::BalanceHeader {
+            name: "Authorization".into(),
+            value: "Bearer {{apiKey}}".into(),
+        }],
+        body: String::new(),
+        extraction: crate::models::endpoint::BalanceExtraction {
+            balance_path: balance_path.into(),
+            currency_path: "$.data.currency".into(),
+            used_path: "$.data.used_quota".into(),
+            expires_at_path: "$.data.expired_time".into(),
+            limits: Vec::new(),
+        },
+    }
+}
+
 #[tauri::command]
 pub async fn query_endpoint_balance(
     state: State<'_, AppState>,
@@ -960,7 +1245,16 @@ pub async fn generate_balance_template_with_ai(
         .map_err(|e| AppError::Proxy(format!("AI 响应不是 JSON: {e}")))?;
     let text = extract_ai_text(format, &value)
         .ok_or_else(|| AppError::Proxy("AI 响应中未找到文本内容".into()))?;
-    parse_ai_balance_config(&text)
+    let cfg = parse_ai_balance_config(&text)?;
+    if balance_config_extracts_from_samples(&cfg, &samples) {
+        return Ok(cfg);
+    }
+    if let Some(inferred) = infer_balance_config_from_samples(&samples) {
+        return Ok(inferred);
+    }
+    Err(AppError::InvalidArgument(
+        "AI 生成的余额模板无法从返回样本中提取余额，请检查 JSON Path 后再测试".into(),
+    ))
 }
 
 #[tauri::command]
@@ -1206,5 +1500,125 @@ mod balance_probe_tests {
         assert_eq!(result.status, "allFailed");
         assert!(result.matched.is_none());
         assert!(result.usable_samples.is_empty());
+    }
+
+    #[test]
+    fn json_path_supports_array_index_and_subtraction() {
+        let json: serde_json::Value = serde_json::from_str(
+            r#"{
+              "remaining": 5.5,
+              "subscription": {"weekly_limit_usd": 300, "weekly_usage_usd": 204.25},
+              "rate_limits": [{"remaining": 3.8, "used": 1.2}]
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            json_path_value(&json, "$.rate_limits[0].remaining").as_deref(),
+            Some("3.8")
+        );
+        assert_eq!(
+            json_path_value(
+                &json,
+                "$.subscription.weekly_limit_usd - $.subscription.weekly_usage_usd"
+            )
+            .as_deref(),
+            Some("95.75")
+        );
+        assert_eq!(
+            json_path_value(&json, "$.subscription.weekly_usage_usd / 2").as_deref(),
+            Some("102.125")
+        );
+    }
+
+    #[test]
+    fn generated_balance_config_must_extract_from_samples() {
+        let samples = vec![BalanceTemplateAiSample {
+            template_id: "cafecode".into(),
+            path: "/v1/usage".into(),
+            status_code: Some(200),
+            sample: Some(
+                r#"{
+                  "remaining": 5.5,
+                  "unit": "USD",
+                  "subscription": {
+                    "daily_limit_usd": 60,
+                    "daily_usage_usd": 54.2,
+                    "weekly_limit_usd": 300,
+                    "weekly_usage_usd": 204.2,
+                    "expires_at": "2026-07-23T18:23:37+08:00"
+                  },
+                  "usage": {"today": {"actual_cost": 54.2}}
+                }"#
+                .into(),
+            ),
+        }];
+        let invalid = BalanceQueryConfig {
+            enabled: true,
+            template_id: "ai-generated".into(),
+            method: "GET".into(),
+            path: "/v1/usage".into(),
+            headers: vec![],
+            body: String::new(),
+            extraction: crate::models::endpoint::BalanceExtraction {
+                balance_path: "$.data.quota".into(),
+                currency_path: "$.data.currency".into(),
+                used_path: "$.data.used_quota".into(),
+                expires_at_path: String::new(),
+                limits: Vec::new(),
+            },
+        };
+
+        assert!(!balance_config_extracts_from_samples(&invalid, &samples));
+        let inferred = infer_balance_config_from_samples(&samples).expect("usage template");
+        assert_eq!(inferred.path, "/v1/usage");
+        assert_eq!(inferred.extraction.balance_path, "$.remaining");
+        assert!(balance_config_extracts_from_samples(&inferred, &samples));
+    }
+}
+
+fn json_path_segment_value<'a>(
+    value: &'a serde_json::Value,
+    segment: &str,
+) -> Option<&'a serde_json::Value> {
+    let mut current = value;
+    let mut rest = segment;
+    if let Some(index_start) = rest.find('[') {
+        let key = &rest[..index_start];
+        if !key.is_empty() {
+            current = current.get(key)?;
+        }
+        rest = &rest[index_start..];
+    } else {
+        return current.get(rest);
+    }
+    while let Some(after_open) = rest.strip_prefix('[') {
+        let end = after_open.find(']')?;
+        let index = after_open[..end].parse::<usize>().ok()?;
+        current = current.as_array()?.get(index)?;
+        rest = &after_open[end + 1..];
+    }
+    if rest.is_empty() {
+        Some(current)
+    } else {
+        None
+    }
+}
+
+fn format_decimal(value: f64) -> String {
+    if !value.is_finite() {
+        return value.to_string();
+    }
+    let mut text = format!("{value:.12}");
+    while text.contains('.') && text.ends_with('0') {
+        text.pop();
+    }
+    if text.ends_with('.') {
+        text.pop();
+    }
+    if text == "-0" {
+        "0".into()
+    } else {
+        text
     }
 }

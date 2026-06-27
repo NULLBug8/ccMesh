@@ -160,6 +160,11 @@ describe("Balance presets", () => {
     expect(ids).toContain("one-api");
     expect(ids).toContain("sub2api");
     expect(ids).toContain("openai");
+    expect(ids).toContain("newapi-user-key");
+    expect(ids).toContain("crazyrouter");
+    expect(ids).toContain("cafecode");
+    expect(ids).toContain("tokenfor-me");
+    expect(ids).toContain("laozhang");
   });
 });
 
