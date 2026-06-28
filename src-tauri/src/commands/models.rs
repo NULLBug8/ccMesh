@@ -5,8 +5,8 @@ use serde_json::{json, Value};
 use tauri::State;
 
 use crate::error::AppResult;
-use crate::modules::models_cache::fetch_models;
-use crate::modules::models_probe::probe_models;
+use crate::modules::models_cache::fetch_models_with_ua;
+use crate::modules::models_probe::probe_models_with_ua;
 use crate::modules::proxy::client::{build_client, should_use_proxy};
 use crate::modules::storage::{config_repo, endpoint_repo};
 use crate::state::AppState;
@@ -38,10 +38,15 @@ pub async fn get_models(
         let conn = state.db_pool.get()?;
         endpoint_repo::list_enabled(&conn)?
     };
-    let (proxy_enabled, proxy_url) = {
+    let (proxy_enabled, proxy_url, openai_ua, claude_cli_ua) = {
         let conn = state.db_pool.get()?;
         let cfg = config_repo::get_config(&conn)?;
-        (cfg.proxy_enabled, cfg.proxy_url)
+        (
+            cfg.proxy_enabled,
+            cfg.proxy_url,
+            cfg.openai_ua,
+            cfg.claude_cli_ua,
+        )
     };
     // 两个 client：直连 + 经代理（地址非空时）；按每端点 use_proxy||proxy_enabled 选用。
     let direct = build_client(false, "", Duration::from_secs(15))?;
@@ -59,7 +64,7 @@ pub async fn get_models(
         } else {
             &direct
         };
-        all.extend(fetch_models(client, ep).await);
+        all.extend(fetch_models_with_ua(client, ep, Some(&openai_ua), Some(&claude_cli_ua)).await);
     }
 
     {
@@ -81,12 +86,25 @@ pub async fn fetch_endpoint_models(
     transformer: String,
     use_proxy: Option<bool>,
 ) -> AppResult<Vec<String>> {
-    let (proxy_enabled, proxy_url) = {
+    let (proxy_enabled, proxy_url, openai_ua, claude_cli_ua) = {
         let conn = state.db_pool.get()?;
         let cfg = config_repo::get_config(&conn)?;
-        (cfg.proxy_enabled, cfg.proxy_url)
+        (
+            cfg.proxy_enabled,
+            cfg.proxy_url,
+            cfg.openai_ua,
+            cfg.claude_cli_ua,
+        )
     };
     let want = should_use_proxy(use_proxy.unwrap_or(false), proxy_enabled, &proxy_url);
     let client = build_client(want, &proxy_url, Duration::from_secs(15))?;
-    Ok(probe_models(&client, &api_url, &api_key, &transformer).await)
+    Ok(probe_models_with_ua(
+        &client,
+        &api_url,
+        &api_key,
+        &transformer,
+        Some(&openai_ua),
+        Some(&claude_cli_ua),
+    )
+    .await)
 }

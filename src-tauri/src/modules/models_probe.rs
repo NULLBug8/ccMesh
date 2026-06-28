@@ -52,14 +52,31 @@ impl ProbeAuth {
     }
 
     /// 给请求套上对应的鉴权/UA 头（模型探测与连通性测试共用，单一来源）。
-    pub fn apply(self, b: reqwest::RequestBuilder, api_key: &str) -> reqwest::RequestBuilder {
+    pub fn apply_with_ua(
+        self,
+        b: reqwest::RequestBuilder,
+        api_key: &str,
+        openai_ua: Option<&str>,
+        claude_ua: Option<&str>,
+    ) -> reqwest::RequestBuilder {
         match self {
             ProbeAuth::Bearer => b
-                .header("user-agent", ua::codex_probe_ua())
+                .header(
+                    "user-agent",
+                    openai_ua
+                        .filter(|v| !v.trim().is_empty())
+                        .map(str::to_string)
+                        .unwrap_or_else(ua::codex_probe_ua),
+                )
                 .header("originator", ua::CODEX_ORIGINATOR)
                 .header("authorization", format!("Bearer {api_key}")),
             ProbeAuth::Claude => b
-                .header("user-agent", ua::CLAUDE_PROBE_UA)
+                .header(
+                    "user-agent",
+                    claude_ua
+                        .filter(|v| !v.trim().is_empty())
+                        .unwrap_or(ua::CLAUDE_PROBE_UA),
+                )
                 .header("x-api-key", api_key)
                 .header("anthropic-version", "2023-06-01"),
         }
@@ -106,13 +123,15 @@ fn strip_known_suffix(base: &str) -> Option<&str> {
 }
 
 /// 单次请求 + 解析 `data[].id`（Claude/OpenAI 上游响应结构相同）。失败返回空。
-pub async fn request_model_ids(
+pub async fn request_model_ids_with_ua(
     client: &reqwest::Client,
     url: &str,
     api_key: &str,
     auth: ProbeAuth,
+    openai_ua: Option<&str>,
+    claude_ua: Option<&str>,
 ) -> Vec<String> {
-    let req = auth.apply(client.get(url), api_key);
+    let req = auth.apply_with_ua(client.get(url), api_key, openai_ua, claude_ua);
     if let Ok(resp) = req.send().await {
         if resp.status().is_success() {
             if let Ok(v) = resp.json::<Value>().await {
@@ -130,16 +149,19 @@ pub async fn request_model_ids(
 
 /// 聚合探测：候选 URL × 两种鉴权（所选 transformer 首选），任一成功立即返回，全失败返回空。
 /// 最多 2 候选 × 2 鉴权 = 4 次请求。
-pub async fn probe_models(
+pub async fn probe_models_with_ua(
     client: &reqwest::Client,
     api_url: &str,
     api_key: &str,
     transformer: &str,
+    openai_ua: Option<&str>,
+    claude_ua: Option<&str>,
 ) -> Vec<String> {
     let primary = ProbeAuth::primary_for(transformer);
     for url in build_candidate_urls(api_url) {
         for auth in [primary, primary.other()] {
-            let ids = request_model_ids(client, &url, api_key, auth).await;
+            let ids =
+                request_model_ids_with_ua(client, &url, api_key, auth, openai_ua, claude_ua).await;
             if !ids.is_empty() {
                 return ids;
             }
@@ -225,5 +247,44 @@ mod tests {
         assert_eq!(ProbeAuth::primary_for("codex"), ProbeAuth::Bearer);
         // 未知值按 Claude 直通 → Claude 头先行
         assert_eq!(ProbeAuth::primary_for("gemini"), ProbeAuth::Claude);
+    }
+
+    #[test]
+    fn probe_auth_uses_configured_openai_ua() {
+        let client = reqwest::Client::new();
+        let req = ProbeAuth::Bearer
+            .apply_with_ua(
+                client.get("https://example.com/v1/models"),
+                "sk-test",
+                Some("codex_cli_rs/9.9.9 (windows; x86_64) vscode/1.99.0"),
+                None,
+            )
+            .build()
+            .unwrap();
+
+        assert_eq!(
+            req.headers().get("user-agent").unwrap(),
+            "codex_cli_rs/9.9.9 (windows; x86_64) vscode/1.99.0"
+        );
+        assert_eq!(req.headers().get("originator").unwrap(), "codex_cli_rs");
+    }
+
+    #[test]
+    fn probe_auth_uses_configured_claude_ua() {
+        let client = reqwest::Client::new();
+        let req = ProbeAuth::Claude
+            .apply_with_ua(
+                client.get("https://example.com/v1/models"),
+                "sk-test",
+                None,
+                Some("claude-cli/9.9.9 (external, sdk-cli)"),
+            )
+            .build()
+            .unwrap();
+
+        assert_eq!(
+            req.headers().get("user-agent").unwrap(),
+            "claude-cli/9.9.9 (external, sdk-cli)"
+        );
     }
 }

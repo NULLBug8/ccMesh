@@ -442,8 +442,7 @@ fn balance_query_presets() -> Vec<BalanceQueryConfig> {
                     crate::models::endpoint::BalanceLimitExtraction {
                         label: "今日额度".into(),
                         balance_path:
-                            "$.subscription.daily_limit_usd - $.subscription.daily_usage_usd"
-                                .into(),
+                            "$.subscription.daily_limit_usd - $.subscription.daily_usage_usd".into(),
                         used_path: "$.subscription.daily_usage_usd".into(),
                         expires_at_path: "$.subscription.expires_at".into(),
                     },
@@ -485,8 +484,7 @@ fn balance_query_presets() -> Vec<BalanceQueryConfig> {
                     crate::models::endpoint::BalanceLimitExtraction {
                         label: "今日额度".into(),
                         balance_path:
-                            "$.subscription.daily_limit_usd - $.subscription.daily_usage_usd"
-                                .into(),
+                            "$.subscription.daily_limit_usd - $.subscription.daily_usage_usd".into(),
                         used_path: "$.subscription.daily_usage_usd".into(),
                         expires_at_path: "$.subscription.expires_at".into(),
                     },
@@ -629,17 +627,39 @@ async fn run_balance_query(
     client: &reqwest::Client,
     ep: &Endpoint,
     cfg: &BalanceQueryConfig,
+    openai_ua: Option<&str>,
+    claude_ua: Option<&str>,
 ) -> AppResult<BalanceQueryResult> {
     let method =
         reqwest::Method::from_bytes(cfg.method.trim().as_bytes()).unwrap_or(reqwest::Method::GET);
     let url = balance_url(ep, cfg);
     let mut req = client.request(method, &url);
+    let mut has_user_agent = false;
     for header in &cfg.headers {
         let name = header.name.trim();
         if name.is_empty() {
             continue;
         }
+        if name.eq_ignore_ascii_case("user-agent") {
+            has_user_agent = true;
+        }
         req = req.header(name, render_balance_template(&header.value, ep));
+    }
+    if !has_user_agent {
+        let format = UpstreamFormat::from_transformer_name(&ep.transformer);
+        match format {
+            UpstreamFormat::OpenAiChat | UpstreamFormat::OpenAiResponses => {
+                if let Some(ua) = openai_ua.filter(|v| !v.trim().is_empty()) {
+                    req = req.header("user-agent", ua);
+                    req = req.header("originator", crate::utils::ua::CODEX_ORIGINATOR);
+                }
+            }
+            UpstreamFormat::Claude => {
+                if let Some(ua) = claude_ua.filter(|v| !v.trim().is_empty()) {
+                    req = req.header("user-agent", ua);
+                }
+            }
+        }
     }
     if !cfg.body.trim().is_empty() {
         req = req.body(render_balance_template(&cfg.body, ep));
@@ -1012,8 +1032,7 @@ fn usage_balance_config(path: &str) -> BalanceQueryConfig {
                 crate::models::endpoint::BalanceLimitExtraction {
                     label: "每月额度".into(),
                     balance_path:
-                        "$.subscription.monthly_limit_usd - $.subscription.monthly_usage_usd"
-                            .into(),
+                        "$.subscription.monthly_limit_usd - $.subscription.monthly_usage_usd".into(),
                     used_path: "$.subscription.monthly_usage_usd".into(),
                     expires_at_path: "$.subscription.expires_at".into(),
                 },
@@ -1079,14 +1098,19 @@ async fn query_endpoint_balance_with_config(
     ep: Endpoint,
     cfg: BalanceQueryConfig,
 ) -> AppResult<BalanceQueryResult> {
-    let (proxy_enabled, proxy_url) = {
+    let (proxy_enabled, proxy_url, openai_ua, claude_cli_ua) = {
         let conn = state.db_pool.get()?;
         let cfg = config_repo::get_config(&conn)?;
-        (cfg.proxy_enabled, cfg.proxy_url)
+        (
+            cfg.proxy_enabled,
+            cfg.proxy_url,
+            cfg.openai_ua,
+            cfg.claude_cli_ua,
+        )
     };
     let want = should_use_proxy(ep.use_proxy, proxy_enabled, &proxy_url);
     let client = build_client(want, &proxy_url, Duration::from_secs(30))?;
-    run_balance_query(&client, &ep, &cfg).await
+    run_balance_query(&client, &ep, &cfg, Some(&openai_ua), Some(&claude_cli_ua)).await
 }
 
 /// 探测端点连通性：发送最小请求，200 即可用；持久化 test_status。
@@ -1101,10 +1125,15 @@ pub async fn probe_endpoint_balance_templates(
         endpoint_repo::get_by_id(&conn, id)?
             .ok_or_else(|| AppError::NotFound(format!("端点 #{id} 不存在")))?
     };
-    let (proxy_enabled, proxy_url) = {
+    let (proxy_enabled, proxy_url, openai_ua, claude_cli_ua) = {
         let conn = state.db_pool.get()?;
         let cfg = config_repo::get_config(&conn)?;
-        (cfg.proxy_enabled, cfg.proxy_url)
+        (
+            cfg.proxy_enabled,
+            cfg.proxy_url,
+            cfg.openai_ua,
+            cfg.claude_cli_ua,
+        )
     };
     let want = should_use_proxy(ep.use_proxy, proxy_enabled, &proxy_url);
     let client = build_client(want, &proxy_url, Duration::from_secs(30))?;
@@ -1118,7 +1147,15 @@ pub async fn probe_endpoint_balance_templates(
     for template in templates {
         let path = template.path.clone();
         let template_id = template.template_id.clone();
-        let result = match run_balance_query(&client, &ep, &template).await {
+        let result = match run_balance_query(
+            &client,
+            &ep,
+            &template,
+            Some(&openai_ua),
+            Some(&claude_cli_ua),
+        )
+        .await
+        {
             Ok(query) => {
                 let sample = if query.status < 400 {
                     Some(sanitize_balance_sample(&query.raw, &ep))
@@ -1201,10 +1238,15 @@ pub async fn generate_balance_template_with_ai(
             "选择的 AI 模型不属于此站点".into(),
         ));
     }
-    let (proxy_enabled, proxy_url) = {
+    let (proxy_enabled, proxy_url, openai_ua, claude_cli_ua) = {
         let conn = state.db_pool.get()?;
         let cfg = config_repo::get_config(&conn)?;
-        (cfg.proxy_enabled, cfg.proxy_url)
+        (
+            cfg.proxy_enabled,
+            cfg.proxy_url,
+            cfg.openai_ua,
+            cfg.claude_cli_ua,
+        )
     };
     let want = should_use_proxy(target.use_proxy, proxy_enabled, &proxy_url);
     let client = build_client(want, &proxy_url, Duration::from_secs(60))?;
@@ -1235,7 +1277,12 @@ pub async fn generate_balance_template_with_ai(
         }),
     };
     let resp = ProbeAuth::primary_for(&target.transformer)
-        .apply(client.post(url), &target.api_key)
+        .apply_with_ua(
+            client.post(url),
+            &target.api_key,
+            Some(&openai_ua),
+            Some(&claude_cli_ua),
+        )
         .json(&body)
         .send()
         .await
@@ -1309,17 +1356,16 @@ fn raw_upstream_endpoint_error(
         );
     }
     if body.is_empty() {
-        return format!("测试失败：上游返回 HTTP {status}，但响应体为空。测试 URL: {url}，模型: {model}");
+        return format!(
+            "测试失败：上游返回 HTTP {status}，但响应体为空。测试 URL: {url}，模型: {model}"
+        );
     }
-    format!("测试失败：上游返回 HTTP {status}。测试 URL: {url}，模型: {model}。上游原始返回: {body}")
+    format!(
+        "测试失败：上游返回 HTTP {status}。测试 URL: {url}，模型: {model}。上游原始返回: {body}"
+    )
 }
 
-fn upstream_read_error_endpoint_message(
-    kind: &str,
-    url: &str,
-    model: &str,
-    error: &str,
-) -> String {
+fn upstream_read_error_endpoint_message(kind: &str, url: &str, model: &str, error: &str) -> String {
     format!(
         "{}。读取上游响应失败: {error}",
         raw_upstream_endpoint_error(kind, 200, url, model, "")
@@ -1335,9 +1381,11 @@ async fn send_endpoint_probe(
     marker: Option<&str>,
     kind: &str,
     model: &str,
+    openai_ua: Option<&str>,
+    claude_ua: Option<&str>,
 ) -> (Result<(), String>, EndpointProbeLog) {
     let request = ProbeAuth::primary_for(transformer)
-        .apply(client.post(url), api_key)
+        .apply_with_ua(client.post(url), api_key, openai_ua, claude_ua)
         .json(body);
     let resp = match request.send().await {
         Ok(resp) => resp,
@@ -1369,11 +1417,17 @@ async fn send_endpoint_probe(
             if text.contains(marker) {
                 return (Ok(()), log);
             }
-            return (Err(raw_upstream_endpoint_error(kind, code, url, model, &text)), log);
+            return (
+                Err(raw_upstream_endpoint_error(kind, code, url, model, &text)),
+                log,
+            );
         }
         return (Ok(()), log);
     }
-    (Err(raw_upstream_endpoint_error(kind, code, url, model, &text)), log)
+    (
+        Err(raw_upstream_endpoint_error(kind, code, url, model, &text)),
+        log,
+    )
 }
 
 fn endpoint_test_probe(
@@ -1439,7 +1493,10 @@ fn endpoint_test_probe(
     }
 }
 
-fn endpoint_test_long_responses_probe(base: &str, model: &str) -> (String, Value, Option<&'static str>) {
+fn endpoint_test_long_responses_probe(
+    base: &str,
+    model: &str,
+) -> (String, Value, Option<&'static str>) {
     let long_text = "长上下文测试 ".repeat(12_000);
     (
         format!("{base}/v1/responses"),
@@ -1501,9 +1558,16 @@ fn record_endpoint_test_log(
         .and_then(|(_, rest)| rest.find('/').map(|idx| rest[idx..].to_string()))
         .unwrap_or_default();
     let request_body = probe.and_then(|item| pretty_json_body(&item.body));
-    let upstream_body = probe
-        .and_then(|item| item.response_body.clone().or_else(|| item.error_message.clone()));
-    let error_body = if success { None } else { Some(message.to_string()) };
+    let upstream_body = probe.and_then(|item| {
+        item.response_body
+            .clone()
+            .or_else(|| item.error_message.clone())
+    });
+    let error_body = if success {
+        None
+    } else {
+        Some(message.to_string())
+    };
 
     state.stats.record(RequestRecord {
         endpoint_name: endpoint_name.to_string(),
@@ -1566,10 +1630,15 @@ pub async fn test_endpoint(
     };
 
     // 测试 client 遵循代理决策：端点 use_proxy 或全局 proxyEnabled（且地址非空）则经代理，否则直连。
-    let (proxy_enabled, proxy_url) = {
+    let (proxy_enabled, proxy_url, openai_ua, claude_cli_ua) = {
         let conn = state.db_pool.get()?;
         let cfg = config_repo::get_config(&conn)?;
-        (cfg.proxy_enabled, cfg.proxy_url)
+        (
+            cfg.proxy_enabled,
+            cfg.proxy_url,
+            cfg.openai_ua,
+            cfg.claude_cli_ua,
+        )
     };
     let want = should_use_proxy(ep.use_proxy, proxy_enabled, &proxy_url);
     let client = build_client(want, &proxy_url, Duration::from_secs(30))?;
@@ -1602,7 +1671,12 @@ pub async fn test_endpoint(
     while attempt < ENDPOINT_TEST_MAX_ATTEMPTS {
         attempt += 1;
         let request = ProbeAuth::primary_for(&ep.transformer)
-            .apply(client.post(&url), &ep.api_key)
+            .apply_with_ua(
+                client.post(&url),
+                &ep.api_key,
+                Some(&openai_ua),
+                Some(&claude_cli_ua),
+            )
             .json(&body);
         match request.send().await {
             Ok(resp) => {
@@ -1623,7 +1697,8 @@ pub async fn test_endpoint(
                                 "测试成功：{} 连续 {stream_successes} 次短流式探针响应完整，模型 {model} 当前可用。注意：这只证明短请求在本轮测试中稳定，真实长上下文/工具/图片请求仍以上游原始返回为准。",
                                 endpoint_test_kind(format),
                             );
-                            if !require_all_stream_attempts || attempt >= ENDPOINT_TEST_MAX_ATTEMPTS {
+                            if !require_all_stream_attempts || attempt >= ENDPOINT_TEST_MAX_ATTEMPTS
+                            {
                                 success = true;
                                 status = "available";
                                 break;
@@ -1729,6 +1804,8 @@ pub async fn test_endpoint(
             long_marker,
             endpoint_test_kind(format),
             model,
+            Some(&openai_ua),
+            Some(&claude_cli_ua),
         )
         .await;
         last_probe_log = Some(long_log);
@@ -1741,9 +1818,8 @@ pub async fn test_endpoint(
             Err(message) => {
                 success = false;
                 status = "unavailable";
-                last_message = format!(
-                    "测试失败：短流式探针已连续通过，但长上下文探针失败。{message}"
-                );
+                last_message =
+                    format!("测试失败：短流式探针已连续通过，但长上下文探针失败。{message}");
             }
         }
     }
@@ -2079,13 +2155,22 @@ mod balance_probe_tests {
 
     #[test]
     fn endpoint_test_codex_probe_sends_tool_choice_only_with_tools() {
-        let (url, body, marker) =
-            endpoint_test_probe("https://example.com/codex", UpstreamFormat::OpenAiResponses, "gpt-5.5");
+        let (url, body, marker) = endpoint_test_probe(
+            "https://example.com/codex",
+            UpstreamFormat::OpenAiResponses,
+            "gpt-5.5",
+        );
 
         assert_eq!(url, "https://example.com/codex/v1/responses");
         assert_eq!(marker, Some("response.completed"));
-        assert_eq!(body.get("tool_choice").and_then(|v| v.as_str()), Some("auto"));
-        assert!(body.get("tools").and_then(|v| v.as_array()).is_some_and(|tools| !tools.is_empty()));
+        assert_eq!(
+            body.get("tool_choice").and_then(|v| v.as_str()),
+            Some("auto")
+        );
+        assert!(body
+            .get("tools")
+            .and_then(|v| v.as_array())
+            .is_some_and(|tools| !tools.is_empty()));
     }
 
     #[test]

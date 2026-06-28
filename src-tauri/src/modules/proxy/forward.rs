@@ -21,7 +21,7 @@ use crate::modules::proxy::resolver;
 use crate::modules::proxy::rotation::{self, Rotation};
 use crate::modules::proxy::trace_capture;
 use crate::modules::stats::aggregator::{RequestRecord, StatsAggregator};
-use crate::modules::storage::{db::DbPool, endpoint_repo};
+use crate::modules::storage::{config_repo, db::DbPool, endpoint_repo};
 use crate::modules::transform::claude_openai::openai_response_to_claude;
 use crate::modules::transform::reasoning_effort::{
     downgrade_reasoning_effort_in_responses, is_unsupported_reasoning_effort_error,
@@ -87,9 +87,9 @@ pub struct ProxyState {
     /// 全局代理 client（配置了 proxy_url 时构建；端点 use_proxy 为真时使用）。
     pub proxy_client: Option<reqwest::Client>,
     /// 伪装 UA：转发到 OpenAI 端点时覆盖 User-Agent（空=透传客户端）。
-    pub openai_ua: String,
+    pub openai_ua: Mutex<String>,
     /// 伪装 UA：转发到 Claude 端点时覆盖 User-Agent（空=透传客户端）。
-    pub claude_cli_ua: String,
+    pub claude_cli_ua: Mutex<String>,
     pub rotation: Rotation,
     pub active: ActiveRequests,
     pub stats: Arc<StatsAggregator>,
@@ -206,9 +206,10 @@ fn build_forward_headers(
 ) -> Vec<(String, String)> {
     let ua_format = UpstreamFormat::from_transformer_name(&ep.transformer);
     let ua_override = match ua_format {
-        UpstreamFormat::OpenAiChat | UpstreamFormat::OpenAiResponses => st.openai_ua.trim(),
-        UpstreamFormat::Claude => st.claude_cli_ua.trim(),
+        UpstreamFormat::OpenAiChat | UpstreamFormat::OpenAiResponses => current_openai_ua(st),
+        UpstreamFormat::Claude => current_claude_ua(st),
     };
+    let ua_override = ua_override.trim().to_string();
     let override_ua = !ua_override.is_empty();
     let add_codex_originator = override_ua
         && ua_override.starts_with(ua::CODEX_ORIGINATOR)
@@ -234,7 +235,7 @@ fn build_forward_headers(
     }
 
     if override_ua {
-        forward_headers.push(("user-agent".to_string(), ua_override.to_string()));
+        forward_headers.push(("user-agent".to_string(), ua_override.clone()));
     }
     if add_codex_originator {
         forward_headers.push(("originator".to_string(), ua::CODEX_ORIGINATOR.to_string()));
@@ -341,6 +342,89 @@ fn filter_unavailable_by_test_status(enabled: &[Endpoint]) -> Vec<Endpoint> {
         enabled.to_vec()
     } else {
         filtered
+    }
+}
+
+fn current_openai_ua(st: &ProxyState) -> String {
+    st.openai_ua.lock().unwrap().clone()
+}
+
+fn current_claude_ua(st: &ProxyState) -> String {
+    st.claude_cli_ua.lock().unwrap().clone()
+}
+
+fn is_codex_or_openai_ua(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    lower.contains("codex") || lower.contains("openai")
+}
+
+fn is_claude_ua(value: &str) -> bool {
+    value.to_ascii_lowercase().contains("claude")
+}
+
+fn is_default_or_auto_ua(current: &str, format: UpstreamFormat) -> bool {
+    let current = current.trim();
+    if current.is_empty() {
+        return true;
+    }
+    match format {
+        UpstreamFormat::OpenAiChat | UpstreamFormat::OpenAiResponses => {
+            is_codex_or_openai_ua(current)
+        }
+        UpstreamFormat::Claude => is_claude_ua(current),
+    }
+}
+
+fn learned_ua_key(
+    format: UpstreamFormat,
+    incoming_ua: &str,
+    current: &str,
+) -> Option<&'static str> {
+    let incoming_ua = incoming_ua.trim();
+    if incoming_ua.is_empty() || incoming_ua == current.trim() {
+        return None;
+    }
+    match format {
+        UpstreamFormat::OpenAiChat | UpstreamFormat::OpenAiResponses
+            if is_codex_or_openai_ua(incoming_ua) && is_default_or_auto_ua(current, format) =>
+        {
+            Some("openaiUa")
+        }
+        UpstreamFormat::Claude
+            if is_claude_ua(incoming_ua) && is_default_or_auto_ua(current, format) =>
+        {
+            Some("claudeCliUa")
+        }
+        _ => None,
+    }
+}
+
+fn maybe_learn_client_ua(st: &ProxyState, ep: &Endpoint, headers: &HeaderMap) {
+    let Some(incoming_ua) = headers
+        .get("user-agent")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return;
+    };
+    let format = UpstreamFormat::from_transformer_name(&ep.transformer);
+    let current = match format {
+        UpstreamFormat::OpenAiChat | UpstreamFormat::OpenAiResponses => current_openai_ua(st),
+        UpstreamFormat::Claude => current_claude_ua(st),
+    };
+    let Some(key) = learned_ua_key(format, incoming_ua, &current) else {
+        return;
+    };
+    if let Ok(conn) = st.db_pool.get() {
+        if config_repo::set_value(&conn, key, incoming_ua).is_ok() {
+            match key {
+                "openaiUa" => *st.openai_ua.lock().unwrap() = incoming_ua.to_string(),
+                "claudeCliUa" => *st.claude_cli_ua.lock().unwrap() = incoming_ua.to_string(),
+                _ => {}
+            }
+            tracing::info!(key, "已自动学习客户端 User-Agent");
+        }
     }
 }
 
@@ -770,6 +854,7 @@ pub async fn handle_proxy(
             path.as_str()
         };
         let upstream_url = format!("{}{}", ep.api_url.trim_end_matches('/'), upstream_path);
+        maybe_learn_client_ua(&st, &ep, &headers);
         let forward_headers = build_forward_headers(&st, &ep, &headers);
         last_upstream_path = upstream_path.to_string();
         let route_mode = if responses_to_chat {
@@ -880,12 +965,7 @@ pub async fn handle_proxy(
                         let err_bytes = resp.bytes().await.unwrap_or_default();
                         let err_text = String::from_utf8_lossy(&err_bytes);
                         let trace_body = trace_capture::capture_body(&err_bytes);
-                        set_upstream_trace(
-                            &mut meta,
-                            status,
-                            upstream_trace_headers,
-                            trace_body,
-                        );
+                        set_upstream_trace(&mut meta, status, upstream_trace_headers, trace_body);
                         last_request_meta = Some(meta);
                         last_status = Some(status);
                         last_error_body = error_body_from_bytes(&err_bytes);
@@ -946,8 +1026,7 @@ pub async fn handle_proxy(
                 }
                 if !rotation::should_retry_status(status) {
                     // 读错误体：Responses→Chat reasoning_effort 降级 / thinking 签名整流（透明重试）。
-                    let may_downgrade_effort =
-                        responses_to_chat && st.reasoning_effort_fallback;
+                    let may_downgrade_effort = responses_to_chat && st.reasoning_effort_fallback;
                     let may_rectify_sig = st.rectifier_config.enabled && !sig_rectified;
                     let resp_headers = copy_response_headers(&resp);
                     let upstream_trace_headers = trace_capture::capture_headers(resp.headers());
@@ -1007,7 +1086,12 @@ pub async fn handle_proxy(
                     }
                     // 最终非重试状态（400/401）缓冲回传，便于记录上游错误体。
                     let trace_body = trace_capture::capture_body(&err_bytes);
-                    set_upstream_trace(&mut meta, status, upstream_trace_headers, trace_body.clone());
+                    set_upstream_trace(
+                        &mut meta,
+                        status,
+                        upstream_trace_headers,
+                        trace_body.clone(),
+                    );
                     set_response_trace(
                         &mut meta,
                         status,
@@ -1153,10 +1237,7 @@ pub async fn handle_proxy(
             }),
         });
     }
-    json_error(
-        StatusCode::BAD_GATEWAY,
-        &diagnostic_message,
-    )
+    json_error(StatusCode::BAD_GATEWAY, &diagnostic_message)
 }
 
 async fn send_upstream(
@@ -1193,9 +1274,10 @@ async fn send_upstream(
     // 伪装 UA：按上游格式取配置；非空则覆盖客户端 UA，为空则纯透传（客户端 UA 随下方头部复制原样转发）
     let ua_format = UpstreamFormat::from_transformer_name(&ep.transformer);
     let ua_override = match ua_format {
-        UpstreamFormat::OpenAiChat | UpstreamFormat::OpenAiResponses => st.openai_ua.trim(),
-        UpstreamFormat::Claude => st.claude_cli_ua.trim(),
+        UpstreamFormat::OpenAiChat | UpstreamFormat::OpenAiResponses => current_openai_ua(st),
+        UpstreamFormat::Claude => current_claude_ua(st),
     };
+    let ua_override = ua_override.trim().to_string();
     let override_ua = !ua_override.is_empty();
     let add_codex_originator = override_ua
         && ua_override.starts_with(ua::CODEX_ORIGINATOR)
@@ -1289,7 +1371,12 @@ async fn relay_buffered_response(
         Err(e) => return json_error(StatusCode::BAD_GATEWAY, &format!("读取上游响应失败: {e}")),
     };
     let trace_body = trace_capture::capture_body(&bytes);
-    set_upstream_trace(&mut meta, status.as_u16(), upstream_trace_headers, trace_body.clone());
+    set_upstream_trace(
+        &mut meta,
+        status.as_u16(),
+        upstream_trace_headers,
+        trace_body.clone(),
+    );
     set_response_trace(
         &mut meta,
         status.as_u16(),
@@ -1548,7 +1635,8 @@ fn stream_transform_response(
 mod tests {
     use super::{
         empty_candidates_message, error_body_from_bytes, filter_unavailable_by_test_status,
-        responses_stream_error_body, should_route_responses_via_chat, truncate_error_body,
+        learned_ua_key, responses_stream_error_body, should_route_responses_via_chat,
+        truncate_error_body,
     };
     use crate::models::endpoint::Endpoint;
     use crate::modules::transform::transformer::UpstreamFormat;
@@ -1597,9 +1685,44 @@ mod tests {
     }
 
     #[test]
+    fn learned_ua_updates_default_openai_but_not_custom_value() {
+        let incoming = "codex_cli_rs/9.9.9 (windows; x86_64) vscode/1.99.0";
+        assert_eq!(
+            learned_ua_key(
+                UpstreamFormat::OpenAiResponses,
+                incoming,
+                "codex_cli_rs/0.114.0 (windows; x86_64) vscode/1.111.0",
+            ),
+            Some("openaiUa")
+        );
+        assert_eq!(
+            learned_ua_key(UpstreamFormat::OpenAiResponses, incoming, "my-custom-agent"),
+            None
+        );
+    }
+
+    #[test]
+    fn learned_ua_updates_default_claude_but_not_custom_value() {
+        let incoming = "claude-cli/9.9.9 (external, sdk-cli)";
+        assert_eq!(
+            learned_ua_key(
+                UpstreamFormat::Claude,
+                incoming,
+                "claude-cli/2.1.185 (external, sdk-cli)",
+            ),
+            Some("claudeCliUa")
+        );
+        assert_eq!(
+            learned_ua_key(UpstreamFormat::Claude, incoming, "my-agent"),
+            None
+        );
+    }
+
+    #[test]
     fn codex_stream_without_completed_is_recorded_as_error() {
-        let message = responses_stream_error_body(UpstreamFormat::OpenAiResponses, 200, None, false)
-            .expect("missing completed event should be an error");
+        let message =
+            responses_stream_error_body(UpstreamFormat::OpenAiResponses, 200, None, false)
+                .expect("missing completed event should be an error");
 
         assert!(message.contains("response.completed"));
         assert!(message.contains("stream disconnected before completion"));
@@ -1625,7 +1748,9 @@ mod tests {
         assert!(
             responses_stream_error_body(UpstreamFormat::OpenAiResponses, 200, None, true).is_none()
         );
-        assert!(responses_stream_error_body(UpstreamFormat::OpenAiChat, 200, None, false).is_none());
+        assert!(
+            responses_stream_error_body(UpstreamFormat::OpenAiChat, 200, None, false).is_none()
+        );
     }
 
     fn endpoint_with_test_status(name: &str, status: &str) -> Endpoint {

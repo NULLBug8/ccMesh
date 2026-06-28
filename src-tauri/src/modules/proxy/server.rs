@@ -90,10 +90,22 @@ fn build_router(state: Arc<ProxyState>) -> Router {
             "/favicon.ico",
             get(crate::commands::web_admin::static_asset_favicon),
         )
-        .route("/__admin/api/invoke", post(crate::commands::web_admin::invoke_http))
-        .route("/__admin/events", get(crate::commands::web_admin::events_sse))
-        .route("/__admin", get(crate::commands::web_admin::static_asset_root))
-        .route("/__admin/", get(crate::commands::web_admin::static_asset_root))
+        .route(
+            "/__admin/api/invoke",
+            post(crate::commands::web_admin::invoke_http),
+        )
+        .route(
+            "/__admin/events",
+            get(crate::commands::web_admin::events_sse),
+        )
+        .route(
+            "/__admin",
+            get(crate::commands::web_admin::static_asset_root),
+        )
+        .route(
+            "/__admin/",
+            get(crate::commands::web_admin::static_asset_root),
+        )
         .route(
             "/__admin/{*path}",
             get(crate::commands::web_admin::static_asset),
@@ -152,8 +164,8 @@ pub async fn start_proxy(
         db_pool,
         client,
         proxy_client,
-        openai_ua: cfg.openai_ua,
-        claude_cli_ua: cfg.claude_cli_ua,
+        openai_ua: std::sync::Mutex::new(cfg.openai_ua),
+        claude_cli_ua: std::sync::Mutex::new(cfg.claude_cli_ua),
         rotation: Rotation::new(),
         active: ActiveRequests::default(),
         stats,

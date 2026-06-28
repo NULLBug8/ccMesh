@@ -29,15 +29,30 @@ async fn fetch_model_ids(
     api_url: &str,
     api_key: &str,
     transformer: &str,
+    openai_ua: Option<&str>,
+    claude_ua: Option<&str>,
 ) -> Vec<String> {
     let url = models_probe::models_url_from_base(api_url);
     let auth = ProbeAuth::primary_for(transformer);
-    models_probe::request_model_ids(client, &url, api_key, auth).await
+    models_probe::request_model_ids_with_ua(client, &url, api_key, auth, openai_ua, claude_ua).await
 }
 
 /// 拉取单个端点的模型列表（OpenAI 走 `/v1/models`；Claude 或失败回落默认模型）。
-pub async fn fetch_models(client: &reqwest::Client, ep: &Endpoint) -> Vec<Value> {
-    let ids = fetch_model_ids(client, &ep.api_url, &ep.api_key, &ep.transformer).await;
+pub async fn fetch_models_with_ua(
+    client: &reqwest::Client,
+    ep: &Endpoint,
+    openai_ua: Option<&str>,
+    claude_ua: Option<&str>,
+) -> Vec<Value> {
+    let ids = fetch_model_ids(
+        client,
+        &ep.api_url,
+        &ep.api_key,
+        &ep.transformer,
+        openai_ua,
+        claude_ua,
+    )
+    .await;
     if ids.is_empty() {
         vec![model_info(default_model(ep), &ep.name)]
     } else {
