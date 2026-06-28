@@ -8,11 +8,15 @@ use crate::error::{AppError, AppResult};
 use crate::models::endpoint::{
     BalanceQueryConfig, CreateEndpointRequest, Endpoint, UpdateEndpointRequest,
 };
+use crate::models::stats::{RequestTrace, RequestTraceStage};
 use crate::modules::models_probe::ProbeAuth;
 use crate::modules::proxy::client::{build_client, should_use_proxy};
+#[cfg(test)]
 use crate::modules::proxy::diagnostics::diagnose_upstream_error;
+use crate::modules::stats::aggregator::RequestRecord;
 use crate::modules::storage::{config_repo, endpoint_repo};
 use crate::modules::transform::transformer::UpstreamFormat;
+use crate::modules::usage::TokenUsage;
 use crate::state::AppState;
 
 const ENDPOINT_TEST_MAX_ATTEMPTS: usize = 5;
@@ -1272,8 +1276,54 @@ fn should_retry_endpoint_test_status(code: u16) -> bool {
     matches!(code, 403 | 408 | 409 | 425 | 429 | 500..=599)
 }
 
+#[cfg(test)]
 fn endpoint_test_http_error_message(code: u16, url: &str, model: &str, body: &str) -> String {
     diagnose_upstream_error(code, body).format_for_endpoint_test(code, url, model)
+}
+
+#[derive(Debug, Clone)]
+struct EndpointProbeLog {
+    url: String,
+    body: Value,
+    status_code: Option<u16>,
+    response_body: Option<String>,
+    error_message: Option<String>,
+}
+
+fn raw_upstream_endpoint_error(
+    kind: &str,
+    status: u16,
+    url: &str,
+    model: &str,
+    body: &str,
+) -> String {
+    let body = body.trim();
+    if status == 200 && body.is_empty() {
+        return format!(
+            "测试失败：{kind} 请求成功但未返回实际流响应结果。测试 URL: {url}，模型: {model}"
+        );
+    }
+    if status == 200 {
+        return format!(
+            "测试失败：{kind} 请求成功但未返回实际流响应结果。测试 URL: {url}，模型: {model}。上游原始返回: {body}"
+        );
+    }
+    if body.is_empty() {
+        return format!("测试失败：上游返回 HTTP {status}，但响应体为空。测试 URL: {url}，模型: {model}");
+    }
+    format!("测试失败：上游返回 HTTP {status}。测试 URL: {url}，模型: {model}。上游原始返回: {body}")
+}
+
+fn upstream_read_error_endpoint_message(
+    kind: &str,
+    url: &str,
+    model: &str,
+    error: &str,
+) -> String {
+    format!(
+        "{}。读取上游响应失败: {error}",
+        raw_upstream_endpoint_error(kind, 200, url, model, "")
+    )
 }
 
 async fn send_endpoint_probe(
@@ -1285,29 +1335,45 @@ async fn send_endpoint_probe(
     marker: Option<&str>,
     kind: &str,
     model: &str,
-) -> Result<(), String> {
+) -> (Result<(), String>, EndpointProbeLog) {
     let request = ProbeAuth::primary_for(transformer)
         .apply(client.post(url), api_key)
         .json(body);
-    let resp = request.send().await.map_err(|e| {
-        format!("测试失败：无法连接到 {url}。请检查 API 地址、网络、代理和证书配置；错误: {e}")
-    })?;
+    let resp = match request.send().await {
+        Ok(resp) => resp,
+        Err(e) => {
+            let message = format!("测试失败：无法连接到上游 {url}: {e}");
+            return (
+                Err(message.clone()),
+                EndpointProbeLog {
+                    url: url.to_string(),
+                    body: body.clone(),
+                    status_code: None,
+                    response_body: None,
+                    error_message: Some(message),
+                },
+            );
+        }
+    };
     let code = resp.status().as_u16();
     let text = resp.text().await.unwrap_or_default();
+    let log = EndpointProbeLog {
+        url: url.to_string(),
+        body: body.clone(),
+        status_code: Some(code),
+        response_body: Some(text.clone()),
+        error_message: None,
+    };
     if code == 200 {
         if let Some(marker) = marker {
             if text.contains(marker) {
-                return Ok(());
+                return (Ok(()), log);
             }
-            let diag = diagnose_upstream_error(200, &text);
-            return Err(format!(
-                "测试失败：{kind} 返回 HTTP 200，但流式响应不完整，未看到结束标记 {marker}。{}。处理方式：{}。测试 URL: {url}，模型: {model}。依据：{}",
-                diag.reason, diag.action, diag.evidence
-            ));
+            return (Err(raw_upstream_endpoint_error(kind, code, url, model, &text)), log);
         }
-        return Ok(());
+        return (Ok(()), log);
     }
-    Err(endpoint_test_http_error_message(code, url, model, &text))
+    (Err(raw_upstream_endpoint_error(kind, code, url, model, &text)), log)
 }
 
 fn endpoint_test_probe(
@@ -1415,6 +1481,77 @@ fn endpoint_test_long_responses_probe(base: &str, model: &str) -> (String, Value
     )
 }
 
+fn pretty_json_body(value: &Value) -> Option<String> {
+    serde_json::to_string_pretty(value).ok()
+}
+
+fn record_endpoint_test_log(
+    state: &AppState,
+    endpoint_name: &str,
+    model: &str,
+    probe: Option<&EndpointProbeLog>,
+    success: bool,
+    latency_ms: u64,
+    message: &str,
+) {
+    let status_code = probe.and_then(|item| item.status_code).map(i64::from);
+    let upstream_url = probe.map(|item| item.url.clone()).unwrap_or_default();
+    let upstream_path = upstream_url
+        .split_once("://")
+        .and_then(|(_, rest)| rest.find('/').map(|idx| rest[idx..].to_string()))
+        .unwrap_or_default();
+    let request_body = probe.and_then(|item| pretty_json_body(&item.body));
+    let upstream_body = probe
+        .and_then(|item| item.response_body.clone().or_else(|| item.error_message.clone()));
+    let error_body = if success { None } else { Some(message.to_string()) };
+
+    state.stats.record(RequestRecord {
+        endpoint_name: endpoint_name.to_string(),
+        model: Some(model.to_string()),
+        inbound_format: "endpoint-test".to_string(),
+        upstream_url,
+        inbound_path: "__admin/test_endpoint".to_string(),
+        upstream_path,
+        status_code,
+        is_error: !success,
+        usage: TokenUsage::default(),
+        duration_ms: Some(latency_ms as i64),
+        first_byte_ms: None,
+        actual_model: None,
+        error_body,
+        trace: Some(RequestTrace {
+            received_request: RequestTraceStage {
+                method: Some("POST".to_string()),
+                url: Some("__admin/test_endpoint".to_string()),
+                status_code: None,
+                headers: Vec::new(),
+                body: Some(format!("endpoint={endpoint_name}, model={model}")),
+            },
+            forward_request: RequestTraceStage {
+                method: Some("POST".to_string()),
+                url: probe.map(|item| item.url.clone()),
+                status_code: None,
+                headers: Vec::new(),
+                body: request_body,
+            },
+            received_forwarded_request: RequestTraceStage {
+                method: None,
+                url: probe.map(|item| item.url.clone()),
+                status_code,
+                headers: Vec::new(),
+                body: upstream_body,
+            },
+            response_request: RequestTraceStage {
+                method: None,
+                url: Some("__admin/test_endpoint".to_string()),
+                status_code: Some(if success { 200 } else { 502 }),
+                headers: Vec::new(),
+                body: Some(message.to_string()),
+            },
+        }),
+    });
+}
+
 #[tauri::command]
 pub async fn test_endpoint(
     app: AppHandle,
@@ -1461,6 +1598,7 @@ pub async fn test_endpoint(
     let mut status = "unavailable";
     let require_all_stream_attempts = stream_marker.is_some();
     let mut stream_successes = 0usize;
+    let mut last_probe_log: Option<EndpointProbeLog> = None;
     while attempt < ENDPOINT_TEST_MAX_ATTEMPTS {
         attempt += 1;
         let request = ProbeAuth::primary_for(&ep.transformer)
@@ -1473,9 +1611,16 @@ pub async fn test_endpoint(
                     let marker = stream_marker.unwrap();
                     match resp.text().await {
                         Ok(text) if text.contains(marker) => {
+                            last_probe_log = Some(EndpointProbeLog {
+                                url: url.clone(),
+                                body: body.clone(),
+                                status_code: Some(code),
+                                response_body: Some(text),
+                                error_message: None,
+                            });
                             stream_successes += 1;
                             last_message = format!(
-                                "测试成功：{} 连续 {stream_successes} 次短流式探针响应完整，模型 {model} 当前可用。注意：这只证明短请求在本轮测试中稳定，真实长上下文/工具/图片请求仍以日志里的上游错误为准。",
+                                "测试成功：{} 连续 {stream_successes} 次短流式探针响应完整，模型 {model} 当前可用。注意：这只证明短请求在本轮测试中稳定，真实长上下文/工具/图片请求仍以上游原始返回为准。",
                                 endpoint_test_kind(format),
                             );
                             if !require_all_stream_attempts || attempt >= ENDPOINT_TEST_MAX_ATTEMPTS {
@@ -1489,39 +1634,83 @@ pub async fn test_endpoint(
                             continue;
                         }
                         Ok(text) => {
-                            let diag = diagnose_upstream_error(200, &text);
-                            last_message = format!(
-                                "测试失败：{} 返回 HTTP 200，但流式响应不完整，未看到结束标记 {marker}。已成功 {stream_successes}/{attempt} 次，说明该端点流式表现不稳定。{}。处理方式：{}。测试 URL: {url}，模型: {model}。依据：{}",
+                            last_probe_log = Some(EndpointProbeLog {
+                                url: url.clone(),
+                                body: body.clone(),
+                                status_code: Some(code),
+                                response_body: Some(text.clone()),
+                                error_message: None,
+                            });
+                            last_message = raw_upstream_endpoint_error(
                                 endpoint_test_kind(format),
-                                diag.reason,
-                                diag.action,
-                                diag.evidence
+                                code,
+                                &url,
+                                model,
+                                &text,
                             );
                             break;
                         }
                         Err(e) => {
-                            last_message =
-                                format!("测试失败：已连接到 {url}，但读取流式响应失败: {e}");
+                            let message = upstream_read_error_endpoint_message(
+                                endpoint_test_kind(format),
+                                &url,
+                                model,
+                                &e.to_string(),
+                            );
+                            last_probe_log = Some(EndpointProbeLog {
+                                url: url.clone(),
+                                body: body.clone(),
+                                status_code: Some(code),
+                                response_body: None,
+                                error_message: Some(message.clone()),
+                            });
+                            last_message = message;
                             break;
                         }
                     }
                 } else if code == 200 {
                     success = true;
                     status = "available";
+                    let text = resp.text().await.unwrap_or_default();
+                    last_probe_log = Some(EndpointProbeLog {
+                        url: url.clone(),
+                        body: body.clone(),
+                        status_code: Some(code),
+                        response_body: Some(text),
+                        error_message: None,
+                    });
                     last_message = format!("测试成功：{url} 可连接，模型 {model} 可用");
                     break;
                 }
 
                 let text = resp.text().await.unwrap_or_default();
-                last_message = endpoint_test_http_error_message(code, &url, model, &text);
+                last_probe_log = Some(EndpointProbeLog {
+                    url: url.clone(),
+                    body: body.clone(),
+                    status_code: Some(code),
+                    response_body: Some(text.clone()),
+                    error_message: None,
+                });
+                last_message = raw_upstream_endpoint_error(
+                    endpoint_test_kind(format),
+                    code,
+                    &url,
+                    model,
+                    &text,
+                );
                 if !should_retry_endpoint_test_status(code) {
                     break;
                 }
             }
             Err(e) => {
-                last_message = format!(
-                    "测试失败：无法连接到 {url}。请检查 API 地址、网络/代理和证书配置；错误: {e}"
-                );
+                last_message = format!("测试失败：无法连接到上游 {url}: {e}");
+                last_probe_log = Some(EndpointProbeLog {
+                    url: url.clone(),
+                    body: body.clone(),
+                    status_code: None,
+                    response_body: None,
+                    error_message: Some(last_message.clone()),
+                });
                 break;
             }
         }
@@ -1529,10 +1718,9 @@ pub async fn test_endpoint(
             tokio::time::sleep(Duration::from_millis(350)).await;
         }
     }
-    let latency_ms = start.elapsed().as_millis() as u64;
     if success && matches!(format, UpstreamFormat::OpenAiResponses) {
         let (long_url, long_body, long_marker) = endpoint_test_long_responses_probe(base, model);
-        match send_endpoint_probe(
+        let (long_result, long_log) = send_endpoint_probe(
             &client,
             &ep.transformer,
             &ep.api_key,
@@ -1542,8 +1730,9 @@ pub async fn test_endpoint(
             endpoint_test_kind(format),
             model,
         )
-        .await
-        {
+        .await;
+        last_probe_log = Some(long_log);
+        match long_result {
             Ok(()) => {
                 last_message = format!(
                     "{last_message} 长上下文探针也已通过，说明该模型当前可处理更接近真实 Codex 的较长输入。"
@@ -1558,11 +1747,22 @@ pub async fn test_endpoint(
             }
         }
     }
+    let latency_ms = start.elapsed().as_millis() as u64;
     let message = if success || attempt <= 1 {
         last_message
     } else {
         format!("{last_message}（本轮共尝试 {attempt} 次）")
     };
+
+    record_endpoint_test_log(
+        &state,
+        &ep.name,
+        model,
+        last_probe_log.as_ref(),
+        success,
+        latency_ms,
+        &message,
+    );
 
     {
         let conn = state.db_pool.get()?;
@@ -1943,6 +2143,53 @@ data: {"code":"InvalidParameter","message":"Missing required parameter: 'workspa
         assert!(message.contains("流式表现不稳定"));
         assert!(message.contains("workspaceid"));
         assert!(message.contains("业务空间"));
+    }
+
+    #[test]
+    fn endpoint_test_empty_stream_reports_success_without_actual_stream_result() {
+        let message = raw_upstream_endpoint_error(
+            endpoint_test_kind(UpstreamFormat::OpenAiResponses),
+            200,
+            "https://example.com/v1/responses",
+            "qwen3.7-max",
+            "",
+        );
+
+        assert!(message.contains("请求成功但未返回实际流响应结果"));
+        assert!(!message.contains("网络"));
+        assert!(!message.contains("证书"));
+    }
+
+    #[test]
+    fn endpoint_test_read_error_reports_empty_actual_stream_result() {
+        let message = upstream_read_error_endpoint_message(
+            endpoint_test_kind(UpstreamFormat::OpenAiResponses),
+            "https://example.com/v1/responses",
+            "qwen3.7-max",
+            "stream ended before response.completed",
+        );
+
+        assert!(message.contains("请求成功但未返回实际流响应结果"));
+        assert!(message.contains("读取上游响应失败"));
+        assert!(message.contains("stream ended before response.completed"));
+        assert!(!message.contains("网络"));
+        assert!(!message.contains("证书"));
+    }
+
+    #[test]
+    fn endpoint_test_failure_passes_through_raw_upstream_body() {
+        let raw = r#"{"error":{"message":"当前账户暂无生效套餐，请前往钱包页面激活订阅","code":"insufficient_user_quota"}}"#;
+        let message = raw_upstream_endpoint_error(
+            endpoint_test_kind(UpstreamFormat::OpenAiResponses),
+            402,
+            "https://example.com/v1/responses",
+            "qwen3.7-max",
+            raw,
+        );
+
+        assert!(message.contains(raw));
+        assert!(!message.contains("处理方式"));
+        assert!(!message.contains("余额页"));
     }
 }
 

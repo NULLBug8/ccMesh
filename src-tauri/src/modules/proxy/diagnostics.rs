@@ -8,6 +8,7 @@ pub struct UpstreamDiagnostic {
 }
 
 impl UpstreamDiagnostic {
+    #[cfg(test)]
     pub fn format_for_endpoint_test(&self, status: u16, url: &str, model: &str) -> String {
         format!(
             "测试失败：{}。处理方式：{}。HTTP {status}，测试 URL: {url}，模型: {model}。依据：{}",
