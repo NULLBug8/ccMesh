@@ -429,6 +429,10 @@ pub struct ResponsesStreamConverter {
     text_item_id: String,
     text_output_index: i64,
     text_accum: String,
+    reasoning_open: bool,
+    reasoning_item_id: String,
+    reasoning_output_index: i64,
+    reasoning_accum: String,
     // 工具 item（Chat tool_calls index → 状态）
     tools: HashMap<i64, ToolItem>,
     // 已完成的 output items（供 response.completed 快照）
@@ -436,6 +440,7 @@ pub struct ResponsesStreamConverter {
     // usage
     input_tokens: i64,
     output_tokens: i64,
+    reasoning_tokens: i64,
     cache_read: i64,
 }
 
@@ -453,10 +458,15 @@ impl ResponsesStreamConverter {
             text_item_id: String::new(),
             text_output_index: 0,
             text_accum: String::new(),
+            reasoning_open: false,
+            reasoning_item_id: String::new(),
+            reasoning_output_index: 0,
+            reasoning_accum: String::new(),
             tools: HashMap::new(),
             output_items: Vec::new(),
             input_tokens,
             output_tokens: 0,
+            reasoning_tokens: 0,
             cache_read: 0,
         }
     }
@@ -464,6 +474,14 @@ impl ResponsesStreamConverter {
     /// 当前累积 token 用量 `(input, output, cache_creation, cache_read)`，供流结束后统计。
     pub fn usage(&self) -> (i64, i64, i64, i64) {
         (self.input_tokens, self.output_tokens, 0, self.cache_read)
+    }
+
+    /// Immediately starts the Responses SSE stream before upstream Chat emits content.
+    /// This prevents clients from treating long first-token latency as a dead stream.
+    pub fn begin(&mut self) -> Vec<String> {
+        let mut events = Vec::new();
+        self.ensure_created(&mut events);
+        events
     }
 
     fn next_seq(&mut self) -> i64 {
@@ -508,6 +526,7 @@ impl ResponsesStreamConverter {
         if self.text_open {
             return;
         }
+        self.close_reasoning(events);
         self.text_open = true;
         let idx = self.next_output_index;
         self.next_output_index += 1;
@@ -577,6 +596,79 @@ impl ResponsesStreamConverter {
         self.text_accum.clear();
     }
 
+    fn ensure_reasoning_item(&mut self, events: &mut Vec<String>) {
+        if self.reasoning_open {
+            return;
+        }
+        self.close_text(events);
+        self.reasoning_open = true;
+        let idx = self.next_output_index;
+        self.next_output_index += 1;
+        self.reasoning_output_index = idx;
+        self.reasoning_item_id = format!("rs_{idx}");
+        let item_id = self.reasoning_item_id.clone();
+        self.push_event(
+            events,
+            "response.output_item.added",
+            json!({
+                "output_index": idx,
+                "item": {
+                    "id": item_id,
+                    "type": "reasoning",
+                    "summary": [],
+                    "status": "in_progress"
+                }
+            }),
+        );
+        let item_id = self.reasoning_item_id.clone();
+        self.push_event(
+            events,
+            "response.reasoning_part.added",
+            json!({
+                "item_id": item_id,
+                "output_index": idx,
+                "content_index": 0,
+                "part": { "type": "reasoning_text", "text": "" }
+            }),
+        );
+    }
+
+    fn close_reasoning(&mut self, events: &mut Vec<String>) {
+        if !self.reasoning_open {
+            return;
+        }
+        self.reasoning_open = false;
+        let id = self.reasoning_item_id.clone();
+        let idx = self.reasoning_output_index;
+        let full = self.reasoning_accum.clone();
+        self.push_event(
+            events,
+            "response.reasoning_text.done",
+            json!({
+                "item_id": id, "output_index": idx, "content_index": 0, "text": full
+            }),
+        );
+        self.push_event(
+            events,
+            "response.reasoning_part.done",
+            json!({
+                "item_id": id, "output_index": idx, "content_index": 0,
+                "part": { "type": "reasoning_text", "text": full }
+            }),
+        );
+        let final_item = json!({
+            "id": id, "type": "reasoning", "status": "completed", "summary": [],
+            "content": [{ "type": "reasoning_text", "text": full }]
+        });
+        self.output_items.push(final_item.clone());
+        self.push_event(
+            events,
+            "response.output_item.done",
+            json!({ "output_index": idx, "item": final_item }),
+        );
+        self.reasoning_accum.clear();
+    }
+
     fn handle_tool_call(&mut self, tc: &Value, events: &mut Vec<String>) {
         let index = tc.get("index").and_then(|v| v.as_i64()).unwrap_or(0);
         let func = tc.get("function");
@@ -588,6 +680,7 @@ impl ResponsesStreamConverter {
 
         // 首见该 index（带 id 或 name）→ 关文本、开新 function_call item
         if !self.tools.contains_key(&index) && (!id.is_empty() || has_name) {
+            self.close_reasoning(events);
             self.close_text(events);
             let out_idx = self.next_output_index;
             self.next_output_index += 1;
@@ -703,6 +796,14 @@ impl ResponsesStreamConverter {
                 if cr > 0 {
                     self.cache_read = cr;
                 }
+                let rt = u
+                    .pointer("/completion_tokens_details/reasoning_tokens")
+                    .or_else(|| u.pointer("/output_tokens_details/reasoning_tokens"))
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
+                if rt > 0 {
+                    self.reasoning_tokens = rt;
+                }
             }
         }
     }
@@ -731,6 +832,25 @@ impl ResponsesStreamConverter {
             .and_then(|a| a.first());
         if let Some(ch) = choice {
             let delta = ch.get("delta");
+
+            if let Some(reason) = delta
+                .and_then(|d| d.get("reasoning_content").or_else(|| d.get("reasoning")))
+                .and_then(|v| v.as_str())
+            {
+                if !reason.is_empty() {
+                    self.ensure_reasoning_item(&mut events);
+                    self.reasoning_accum.push_str(reason);
+                    let id = self.reasoning_item_id.clone();
+                    let idx = self.reasoning_output_index;
+                    self.push_event(
+                        &mut events,
+                        "response.reasoning_text.delta",
+                        json!({
+                            "item_id": id, "output_index": idx, "content_index": 0, "delta": reason
+                        }),
+                    );
+                }
+            }
 
             if let Some(text) = delta
                 .and_then(|d| d.get("content"))
@@ -764,6 +884,7 @@ impl ResponsesStreamConverter {
                 if fr == "length" {
                     self.incomplete = true;
                 }
+                self.close_reasoning(&mut events);
                 self.close_text(&mut events);
                 self.close_tools(&mut events);
             }
@@ -775,6 +896,7 @@ impl ResponsesStreamConverter {
     pub fn finish(&mut self) -> Vec<String> {
         let mut events = Vec::new();
         self.ensure_created(&mut events);
+        self.close_reasoning(&mut events);
         self.close_text(&mut events);
         self.close_tools(&mut events);
         if self.finished {
@@ -796,7 +918,7 @@ impl ResponsesStreamConverter {
                 "input_tokens": self.input_tokens,
                 "input_tokens_details": { "cached_tokens": self.cache_read },
                 "output_tokens": self.output_tokens,
-                "output_tokens_details": { "reasoning_tokens": 0 },
+                "output_tokens_details": { "reasoning_tokens": self.reasoning_tokens },
                 "total_tokens": self.input_tokens + self.output_tokens
             }
         });
@@ -1142,5 +1264,47 @@ mod tests {
         assert!(first.contains("event: response.completed"));
         let second = join(c.finish());
         assert!(!second.contains("event: response.completed"));
+    }
+
+    #[test]
+    fn stream_begin_emits_initial_responses_events_before_content() {
+        let mut c = ResponsesStreamConverter::new("qwen3.7-max".into(), 0);
+        let begin = join(c.begin());
+
+        assert!(begin.contains("event: response.created"));
+        assert!(begin.contains("event: response.in_progress"));
+        assert!(begin.contains("qwen3.7-max"));
+
+        let second = join(c.begin());
+        assert!(second.is_empty());
+    }
+
+    #[test]
+    fn stream_reasoning_content_emits_responses_reasoning_events() {
+        let mut c = ResponsesStreamConverter::new("qwen3.7-max".into(), 0);
+        let s1 = join(c.process_chunk(&json!({
+            "id": "cmpl-r",
+            "choices": [{ "delta": { "reasoning_content": "think" }, "finish_reason": Value::Null }]
+        })));
+
+        assert!(s1.contains("event: response.reasoning_part.added"));
+        assert!(s1.contains("event: response.reasoning_text.delta"));
+        assert!(s1.contains("\"delta\":\"think\""));
+
+        let s2 = join(c.process_chunk(&json!({
+            "choices": [{ "delta": { "content": "answer" }, "finish_reason": "stop" }],
+            "usage": {
+                "prompt_tokens": 2,
+                "completion_tokens": 5,
+                "completion_tokens_details": { "reasoning_tokens": 4 }
+            }
+        })));
+        assert!(s2.contains("event: response.reasoning_text.done"));
+        assert!(s2.contains("event: response.output_text.delta"));
+        assert!(s2.contains("\"delta\":\"answer\""));
+
+        let done = join(c.finish());
+        assert!(done.contains("event: response.completed"));
+        assert!(done.contains("\"reasoning_tokens\":4"));
     }
 }

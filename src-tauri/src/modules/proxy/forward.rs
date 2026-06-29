@@ -11,6 +11,7 @@ use tokio_util::sync::CancellationToken;
 use futures::StreamExt;
 use serde_json::Value;
 use tokio::sync::mpsc;
+use tokio::time::{self, Duration};
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::models::endpoint::Endpoint;
@@ -38,6 +39,7 @@ use crate::modules::usage;
 use crate::utils::ua;
 
 const MAX_ERROR_BODY_BYTES: usize = 4096;
+const RESPONSES_CHAT_HEARTBEAT_SECS: u64 = 15;
 
 /// 每端点在途请求计数 + 取消令牌（手动切换时中止在途请求）。
 #[derive(Default)]
@@ -1855,7 +1857,38 @@ fn stream_responses_from_chat(
         let mut stream = resp.bytes_stream();
         let mut buf = String::new();
         let mut first = true;
-        while let Some(item) = stream.next().await {
+        for ev in converter.begin() {
+            let chunk = Bytes::from(ev);
+            response_preview.push(&chunk);
+            if tx.send(Ok(chunk)).await.is_err() {
+                return;
+            }
+            if first {
+                meta.first_byte_ms = Some(chrono::Utc::now().timestamp_millis() - meta.started_ms);
+                first = false;
+            }
+        }
+        let heartbeat_interval = Duration::from_secs(RESPONSES_CHAT_HEARTBEAT_SECS);
+        let mut heartbeat = time::interval_at(
+            time::Instant::now() + heartbeat_interval,
+            heartbeat_interval,
+        );
+        heartbeat.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
+        loop {
+            let item = tokio::select! {
+                item = stream.next() => item,
+                _ = heartbeat.tick() => {
+                    let chunk = Bytes::from_static(b": ccmesh keepalive\n\n");
+                    response_preview.push(&chunk);
+                    if tx.send(Ok(chunk)).await.is_err() {
+                        return;
+                    }
+                    continue;
+                }
+            };
+            let Some(item) = item else {
+                break;
+            };
             let chunk = match item {
                 Ok(c) => c,
                 Err(_) => break,
