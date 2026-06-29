@@ -65,6 +65,7 @@ impl ProbeAuth {
                     "user-agent",
                     openai_ua
                         .filter(|v| !v.trim().is_empty())
+                        .and_then(ua::usable_openai_codex_ua)
                         .map(str::to_string)
                         .unwrap_or_else(ua::codex_probe_ua),
                 )
@@ -267,6 +268,28 @@ mod tests {
             "codex_cli_rs/9.9.9 (windows; x86_64) vscode/1.99.0"
         );
         assert_eq!(req.headers().get("originator").unwrap(), "codex_cli_rs");
+    }
+
+    #[test]
+    fn probe_auth_ignores_local_discovery_openai_ua() {
+        let client = reqwest::Client::new();
+        let req = ProbeAuth::Bearer
+            .apply_with_ua(
+                client.get("https://example.com/v1/models"),
+                "sk-test",
+                Some("Codex local server discovery"),
+                None,
+            )
+            .build()
+            .unwrap();
+
+        assert!(req
+            .headers()
+            .get("user-agent")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .starts_with("codex_cli_rs/"));
     }
 
     #[test]

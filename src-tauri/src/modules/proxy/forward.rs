@@ -356,6 +356,9 @@ fn current_claude_ua(st: &ProxyState) -> String {
 }
 
 fn is_codex_or_openai_ua(value: &str) -> bool {
+    if crate::utils::ua::is_invalid_openai_codex_ua(value) {
+        return false;
+    }
     let lower = value.to_ascii_lowercase();
     lower.contains("codex") || lower.contains("openai")
 }
@@ -371,7 +374,7 @@ fn is_default_or_auto_ua(current: &str, format: UpstreamFormat) -> bool {
     }
     match format {
         UpstreamFormat::OpenAiChat | UpstreamFormat::OpenAiResponses => {
-            is_codex_or_openai_ua(current)
+            is_codex_or_openai_ua(current) || crate::utils::ua::is_invalid_openai_codex_ua(current)
         }
         UpstreamFormat::Claude => is_claude_ua(current),
     }
@@ -1699,6 +1702,14 @@ mod tests {
         );
         assert_eq!(
             learned_ua_key(UpstreamFormat::OpenAiResponses, incoming, "my-custom-agent"),
+            None
+        );
+        assert_eq!(
+            learned_ua_key(
+                UpstreamFormat::OpenAiResponses,
+                "Codex local server discovery",
+                "codex_cli_rs/0.114.0 (windows; x86_64) vscode/1.111.0",
+            ),
             None
         );
     }

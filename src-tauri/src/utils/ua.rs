@@ -12,6 +12,22 @@ pub const CLAUDE_PROBE_UA: &str = "claude-cli/2.1.185 (external, sdk-cli)";
 /// Codex CLI 的 originator 头值，后端据此识别真实客户端。
 pub const CODEX_ORIGINATOR: &str = "codex_cli_rs";
 
+pub fn is_invalid_openai_codex_ua(value: &str) -> bool {
+    let lower = value.trim().to_ascii_lowercase();
+    lower.is_empty()
+        || lower.contains("local server discovery")
+        || lower.contains("server discovery")
+}
+
+pub fn usable_openai_codex_ua(value: &str) -> Option<&str> {
+    let value = value.trim();
+    if is_invalid_openai_codex_ua(value) {
+        None
+    } else {
+        Some(value)
+    }
+}
+
 /// 模拟 Codex CLI 的 UA：`codex_cli_rs/<version> (<OS>; <arch>) vscode/<version>`，OS/arch 取运行环境。
 pub fn codex_probe_ua() -> String {
     format!(

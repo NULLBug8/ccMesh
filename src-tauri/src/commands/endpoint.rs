@@ -1,6 +1,5 @@
 use std::time::{Duration, Instant};
 
-use futures::stream::{self, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, State};
@@ -1397,7 +1396,7 @@ fn raw_upstream_endpoint_error(
                 "{path}，模型: {model} 测试失败: 请求成功但未返回实际流响应结果"
             );
         }
-        return format!("{path}，模型: {model} 测试失败: 请求成功但未返回实际流响应结果: {reason}");
+        return format!("{path}，模型: {model} 测试失败: {reason}");
     }
     if body.is_empty() {
         return format!("{path}，模型: {model} 测试失败: 上游返回 {status}: 响应体为空");
@@ -1473,6 +1472,24 @@ fn strip_trace_suffix(message: &str) -> String {
 }
 
 fn extract_upstream_error_message(body: &str) -> Option<String> {
+    if let Some(message) = extract_upstream_error_message_from_json(body) {
+        return Some(message);
+    }
+    for line in body.lines() {
+        let Some(data) = line.trim().strip_prefix("data:").map(str::trim) else {
+            continue;
+        };
+        if data.is_empty() || data == "[DONE]" {
+            continue;
+        }
+        if let Some(message) = extract_upstream_error_message_from_json(data) {
+            return Some(message);
+        }
+    }
+    None
+}
+
+fn extract_upstream_error_message_from_json(body: &str) -> Option<String> {
     let value: Value = serde_json::from_str(body).ok()?;
     let candidates = [
         value.pointer("/error/message"),
@@ -1505,6 +1522,45 @@ fn endpoint_connect_error_message(url: &str, model: &str) -> String {
     )
 }
 
+fn endpoint_timeout_error_message(url: &str, model: &str) -> String {
+    let suffix = if endpoint_test_url_path(url).contains("v1/responses") {
+        "请求已发出，但上游未在测试超时时间内返回实际流响应结果"
+    } else {
+        "请求已发出，但上游未在测试超时时间内返回实际响应结果"
+    };
+    format!(
+        "{}，模型: {model} 测试失败: {suffix}",
+        endpoint_test_url_path(url),
+    )
+}
+
+fn preferred_endpoint_model<'a>(
+    models: &'a [String],
+    format: UpstreamFormat,
+) -> Option<&'a String> {
+    let non_empty = || models.iter().filter(|m| !m.trim().is_empty());
+    if matches!(format, UpstreamFormat::OpenAiResponses) {
+        for preferred in [
+            "gpt-5.5",
+            "gpt-5.4",
+            "gpt-5.4-mini",
+            "gpt-5.3-codex",
+            "gpt-5.2",
+        ] {
+            if let Some(found) = non_empty().find(|m| m.trim().eq_ignore_ascii_case(preferred)) {
+                return Some(found);
+            }
+        }
+        if let Some(found) = non_empty().find(|m| {
+            let lower = m.trim().to_ascii_lowercase();
+            lower.starts_with("gpt-") && !lower.contains("image")
+        }) {
+            return Some(found);
+        }
+    }
+    non_empty().next()
+}
+
 fn select_endpoint_test_model(
     ep: &Endpoint,
     explicit_model: Option<String>,
@@ -1525,7 +1581,7 @@ fn select_endpoint_test_model(
             let value = ep.model.trim();
             (!value.is_empty()).then(|| value.to_string())
         })
-        .or_else(|| ep.models.iter().find(|m| !m.trim().is_empty()).cloned())
+        .or_else(|| preferred_endpoint_model(&ep.models, format).cloned())
         .unwrap_or_else(|| format.default_model().to_string())
 }
 
@@ -1547,7 +1603,11 @@ async fn send_endpoint_probe(
     let resp = match request.send().await {
         Ok(resp) => resp,
         Err(e) => {
-            let message = endpoint_connect_error_message(url, model);
+            let message = if e.is_timeout() {
+                endpoint_timeout_error_message(url, model)
+            } else {
+                endpoint_connect_error_message(url, model)
+            };
             let detail = format!("测试失败：无法连接到上游 {url}: {e}");
             return (
                 Err(message.clone()),
@@ -1580,6 +1640,12 @@ async fn send_endpoint_probe(
                 log,
             );
         }
+        if text.trim().is_empty() {
+            return (
+                Err(raw_upstream_endpoint_error(kind, code, url, model, &text)),
+                log,
+            );
+        }
         return (Ok(()), log);
     }
     (
@@ -1597,10 +1663,10 @@ fn endpoint_test_probe(
         UpstreamFormat::OpenAiChat => (
             format!("{base}/v1/chat/completions"),
             json!({
-                "model": model, "max_tokens": 16, "stream": true,
+                "model": model, "max_tokens": 16, "stream": false,
                 "messages": [{ "role": "user", "content": "ping" }]
             }),
-            Some("[DONE]"),
+            None,
         ),
         UpstreamFormat::OpenAiResponses => (
             format!("{base}/v1/responses"),
@@ -1801,19 +1867,21 @@ pub async fn test_endpoint(
         )
     };
     let want = should_use_proxy(ep.use_proxy, proxy_enabled, &proxy_url);
+    let base = ep.api_url.trim_end_matches('/');
+    let format = UpstreamFormat::from_transformer_name(&ep.transformer);
     let deep = mode
         .as_deref()
         .map(|v| v.eq_ignore_ascii_case("deep"))
         .unwrap_or(false);
     let client_timeout = if deep {
         Duration::from_secs(30)
-    } else {
+    } else if matches!(format, UpstreamFormat::OpenAiResponses) {
         Duration::from_secs(12)
+    } else {
+        Duration::from_secs(30)
     };
     let client = build_client(want, &proxy_url, client_timeout)?;
 
-    let base = ep.api_url.trim_end_matches('/');
-    let format = UpstreamFormat::from_transformer_name(&ep.transformer);
     // 模型优先级：调用方指定 > 端点测试模型 > 全局测试模型 > 锁定模型 > 模型列表 > 格式默认。
     let requested_model = select_endpoint_test_model(&ep, model, &global_test_model, format);
     let outbound_model =
@@ -1954,7 +2022,11 @@ pub async fn test_endpoint(
                 }
             }
             Err(e) => {
-                last_message = endpoint_connect_error_message(&url, model);
+                last_message = if e.is_timeout() {
+                    endpoint_timeout_error_message(&url, model)
+                } else {
+                    endpoint_connect_error_message(&url, model)
+                };
                 last_probe_log = Some(EndpointProbeLog {
                     url: url.clone(),
                     body: body.clone(),
@@ -2041,29 +2113,20 @@ pub async fn test_all_endpoints(
         let conn = state.db_pool.get()?;
         endpoint_repo::list_all(&conn)?
     };
-    let items = stream::iter(endpoints.into_iter().map(|ep| {
-        let app = app.clone();
-        let state = state.clone();
-        let mode = mode.clone();
-        async move {
-            let result = test_endpoint(app, state, ep.id, None, mode).await?;
-            let model = extract_test_model_from_message(&result.message);
-            Ok::<_, AppError>(EndpointBatchTestItem {
-                id: ep.id,
-                name: ep.name,
-                model,
-                success: result.success,
-                status: result.status,
-                latency_ms: result.latency_ms,
-                message: result.message,
-            })
-        }
-    }))
-    .buffer_unordered(3)
-    .collect::<Vec<_>>()
-    .await
-    .into_iter()
-    .collect::<AppResult<Vec<_>>>()?;
+    let mut items = Vec::with_capacity(endpoints.len());
+    for ep in endpoints {
+        let result = test_endpoint(app.clone(), state.clone(), ep.id, None, mode.clone()).await?;
+        let model = extract_test_model_from_message(&result.message);
+        items.push(EndpointBatchTestItem {
+            id: ep.id,
+            name: ep.name,
+            model,
+            success: result.success,
+            status: result.status,
+            latency_ms: result.latency_ms,
+            message: result.message,
+        });
+    }
     let total = items.len();
     let success = items.iter().filter(|item| item.success).count();
     Ok(EndpointBatchTestResult {
@@ -2393,6 +2456,49 @@ mod balance_probe_tests {
     }
 
     #[test]
+    fn endpoint_test_openai_probe_uses_non_stream_to_avoid_empty_stream_false_negative() {
+        let (url, body, marker) =
+            endpoint_test_probe("https://example.com", UpstreamFormat::OpenAiChat, "qwen3.7-max");
+
+        assert_eq!(url, "https://example.com/v1/chat/completions");
+        assert_eq!(marker, None);
+        assert_eq!(body.get("stream").and_then(|v| v.as_bool()), Some(false));
+    }
+
+    #[test]
+    fn endpoint_test_timeout_message_does_not_claim_connection_failure() {
+        let message = endpoint_timeout_error_message(
+            "https://example.com/v1/responses",
+            "qwen3.7-max",
+        );
+
+        assert!(message.contains("未在测试超时时间内返回实际流响应结果"));
+        assert!(!message.contains("无法连接"));
+    }
+
+    #[test]
+    fn codex_endpoint_test_prefers_general_gpt_model_over_special_model() {
+        let models = vec![
+            "codex-auto-review".to_string(),
+            "gpt-5.4".to_string(),
+            "gpt-5.5".to_string(),
+        ];
+
+        let selected = preferred_endpoint_model(&models, UpstreamFormat::OpenAiResponses).unwrap();
+
+        assert_eq!(selected, "gpt-5.5");
+    }
+
+    #[test]
+    fn non_codex_endpoint_test_keeps_list_order() {
+        let models = vec!["qwen3.7-max".to_string(), "gpt-5.5".to_string()];
+
+        let selected = preferred_endpoint_model(&models, UpstreamFormat::OpenAiChat).unwrap();
+
+        assert_eq!(selected, "qwen3.7-max");
+    }
+
+    #[test]
     fn endpoint_test_tool_choice_error_tells_user_exact_request_fix() {
         let message = endpoint_test_http_error_message(
             200,
@@ -2462,6 +2568,23 @@ data: {"code":"InvalidParameter","message":"Missing required parameter: 'workspa
         assert!(message.contains("请求成功但未返回实际流响应结果"));
         assert!(!message.contains("网络"));
         assert!(!message.contains("证书"));
+    }
+
+    #[test]
+    fn endpoint_test_sse_json_error_reports_upstream_message_directly() {
+        let message = raw_upstream_endpoint_error(
+            endpoint_test_kind(UpstreamFormat::OpenAiResponses),
+            200,
+            "https://vsllm.com/v1/responses",
+            "qwen3.7-max",
+            r#"event:
+data: {"code":"InvalidParameter","message":"Missing required parameter: 'workspaceid'. Please ensure your API key is bound to a business workspace.","request_id":"x"}"#,
+        );
+
+        assert_eq!(
+            message,
+            "v1/responses，模型: qwen3.7-max 测试失败: Missing required parameter: 'workspaceid'. Please ensure your API key is bound to a business workspace"
+        );
     }
 
     #[test]
