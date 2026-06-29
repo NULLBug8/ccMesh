@@ -12,10 +12,17 @@ fn save_rules_config(state: &AppState, config: &RulesConfig) -> AppResult<()> {
     Ok(())
 }
 
+fn normalize_rules_config(mut config: RulesConfig) -> RulesConfig {
+    // 策略不再暴露给用户配置：统一固定为按端点列表顺序轮询。
+    config.routing.strategy = "balanced".into();
+    config.routing.model_mapping_strategy = "site-first".into();
+    config
+}
+
 #[tauri::command]
 pub fn get_rules_config(state: State<'_, AppState>) -> AppResult<RulesConfig> {
     let conn = state.db_pool.get()?;
-    Ok(config_repo::get_config(&conn)?.rules)
+    Ok(normalize_rules_config(config_repo::get_config(&conn)?.rules))
 }
 
 #[tauri::command]
@@ -24,6 +31,7 @@ pub async fn set_rules_config(
     state: State<'_, AppState>,
     config: RulesConfig,
 ) -> AppResult<RulesConfig> {
+    let config = normalize_rules_config(config);
     save_rules_config(&state, &config)?;
     let _ = app.emit(PROXY_STATUS_EVENT, build_status(&state));
     Ok(config)
@@ -34,7 +42,7 @@ pub async fn reset_rules_config(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> AppResult<RulesConfig> {
-    let config = RulesConfig::default();
+    let config = normalize_rules_config(RulesConfig::default());
     save_rules_config(&state, &config)?;
     let _ = app.emit(PROXY_STATUS_EVENT, build_status(&state));
     Ok(config)

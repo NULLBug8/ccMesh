@@ -1339,37 +1339,102 @@ struct EndpointProbeLog {
 }
 
 fn raw_upstream_endpoint_error(
-    kind: &str,
+    _kind: &str,
     status: u16,
     url: &str,
     model: &str,
     body: &str,
 ) -> String {
     let body = body.trim();
+    let path = endpoint_test_url_path(url);
     if status == 200 && body.is_empty() {
         return format!(
-            "测试失败：{kind} 请求成功但未返回实际流响应结果。测试 URL: {url}，模型: {model}"
+            "{path}，模型: {model} 测试失败: 请求成功但未返回实际流响应结果"
         );
     }
+    let reason = extract_upstream_error_message(body)
+        .unwrap_or_else(|| truncate_endpoint_message_body(body, 160));
     if status == 200 {
-        return format!(
-            "测试失败：{kind} 请求成功但未返回实际流响应结果。测试 URL: {url}，模型: {model}。上游原始返回: {body}"
-        );
+        if reason.is_empty() {
+            return format!(
+                "{path}，模型: {model} 测试失败: 请求成功但未返回实际流响应结果"
+            );
+        }
+        return format!("{path}，模型: {model} 测试失败: 请求成功但未返回实际流响应结果: {reason}");
     }
     if body.is_empty() {
-        return format!(
-            "测试失败：上游返回 HTTP {status}，但响应体为空。测试 URL: {url}，模型: {model}"
-        );
+        return format!("{path}，模型: {model} 测试失败: 上游返回 {status}: 响应体为空");
     }
-    format!(
-        "测试失败：上游返回 HTTP {status}。测试 URL: {url}，模型: {model}。上游原始返回: {body}"
-    )
+    format!("{path}，模型: {model} 测试失败: 上游返回 {status}: {reason}")
 }
 
-fn upstream_read_error_endpoint_message(kind: &str, url: &str, model: &str, error: &str) -> String {
+fn endpoint_test_url_path(url: &str) -> String {
+    let path = url
+        .split_once("://")
+        .and_then(|(_, rest)| rest.find('/').map(|idx| &rest[idx..]))
+        .unwrap_or(url)
+        .trim_start_matches('/');
+    if let Some(idx) = path.find("v1/") {
+        path[idx..].to_string()
+    } else {
+        path.to_string()
+    }
+}
+
+fn truncate_endpoint_message_body(body: &str, max_chars: usize) -> String {
+    let trimmed = body.trim();
+    let mut out: String = trimmed.chars().take(max_chars).collect();
+    if trimmed.chars().count() > max_chars {
+        out.push('…');
+    }
+    out
+}
+
+fn strip_trace_suffix(message: &str) -> String {
+    let mut text = message.trim().to_string();
+    for marker in ["（traceid:", "(traceid:", "（trace_id:", "(trace_id:"] {
+        if let Some(idx) = text.to_lowercase().find(marker) {
+            text.truncate(idx);
+            break;
+        }
+    }
+    text.trim()
+        .trim_end_matches('。')
+        .trim_end_matches('.')
+        .trim()
+        .to_string()
+}
+
+fn extract_upstream_error_message(body: &str) -> Option<String> {
+    let value: Value = serde_json::from_str(body).ok()?;
+    let candidates = [
+        value.pointer("/error/message"),
+        value.pointer("/message"),
+        value.pointer("/error"),
+    ];
+    for candidate in candidates.into_iter().flatten() {
+        if let Some(message) = candidate.as_str() {
+            let message = strip_trace_suffix(message);
+            if !message.is_empty() {
+                return Some(message);
+            }
+        }
+    }
+    None
+}
+
+fn upstream_read_error_endpoint_message(kind: &str, url: &str, model: &str, _error: &str) -> String {
+    raw_upstream_endpoint_error(kind, 200, url, model, "")
+}
+
+fn endpoint_test_should_run_long_probe(format: UpstreamFormat, _deep: bool) -> bool {
+    matches!(format, UpstreamFormat::OpenAiResponses)
+}
+
+fn endpoint_connect_error_message(url: &str, model: &str) -> String {
     format!(
-        "{}。读取上游响应失败: {error}",
-        raw_upstream_endpoint_error(kind, 200, url, model, "")
+        "{}，模型: {model} 测试失败: 无法连接到上游",
+        endpoint_test_url_path(url)
     )
 }
 
@@ -1391,7 +1456,8 @@ async fn send_endpoint_probe(
     let resp = match request.send().await {
         Ok(resp) => resp,
         Err(e) => {
-            let message = format!("测试失败：无法连接到上游 {url}: {e}");
+            let message = endpoint_connect_error_message(url, model);
+            let detail = format!("测试失败：无法连接到上游 {url}: {e}");
             return (
                 Err(message.clone()),
                 EndpointProbeLog {
@@ -1399,7 +1465,7 @@ async fn send_endpoint_probe(
                     body: body.clone(),
                     status_code: None,
                     response_body: None,
-                    error_message: Some(message),
+                    error_message: Some(detail),
                 },
             );
         }
@@ -1682,7 +1748,6 @@ pub async fn test_endpoint(
     let mut success = false;
     let mut status = "unavailable";
     let require_all_stream_attempts = stream_marker.is_some();
-    let mut stream_successes = 0usize;
     let mut last_probe_log: Option<EndpointProbeLog> = None;
     while attempt < max_attempts {
         attempt += 1;
@@ -1708,10 +1773,9 @@ pub async fn test_endpoint(
                                 response_body: Some(text),
                                 error_message: None,
                             });
-                            stream_successes += 1;
                             last_message = format!(
-                                "测试成功：{} 连续 {stream_successes} 次短流式探针响应完整，模型 {model} 当前可用。注意：这只证明短请求在本轮测试中稳定，真实长上下文/工具/图片请求仍以上游原始返回为准。",
-                                endpoint_test_kind(format),
+                                "{}，模型: {model} 短流式探针通过",
+                                endpoint_test_url_path(&url),
                             );
                             if !require_all_stream_attempts || attempt >= max_attempts {
                                 success = true;
@@ -1752,7 +1816,16 @@ pub async fn test_endpoint(
                                 body: body.clone(),
                                 status_code: Some(code),
                                 response_body: None,
-                                error_message: Some(message.clone()),
+                                error_message: Some(format!(
+                                    "{}: 读取上游响应失败: {e}",
+                                    raw_upstream_endpoint_error(
+                                        endpoint_test_kind(format),
+                                        code,
+                                        &url,
+                                        model,
+                                        "",
+                                    )
+                                )),
                             });
                             last_message = message;
                             break;
@@ -1769,7 +1842,10 @@ pub async fn test_endpoint(
                         response_body: Some(text),
                         error_message: None,
                     });
-                    last_message = format!("测试成功：{url} 可连接，模型 {model} 可用");
+                    last_message = format!(
+                        "{}，模型: {model} 测试成功",
+                        endpoint_test_url_path(&url),
+                    );
                     break;
                 }
 
@@ -1793,13 +1869,13 @@ pub async fn test_endpoint(
                 }
             }
             Err(e) => {
-                last_message = format!("测试失败：无法连接到上游 {url}: {e}");
+                last_message = endpoint_connect_error_message(&url, model);
                 last_probe_log = Some(EndpointProbeLog {
                     url: url.clone(),
                     body: body.clone(),
                     status_code: None,
                     response_body: None,
-                    error_message: Some(last_message.clone()),
+                    error_message: Some(format!("测试失败：无法连接到上游 {url}: {e}")),
                 });
                 break;
             }
@@ -1808,7 +1884,7 @@ pub async fn test_endpoint(
             tokio::time::sleep(Duration::from_millis(350)).await;
         }
     }
-    if deep && success && matches!(format, UpstreamFormat::OpenAiResponses) {
+    if endpoint_test_should_run_long_probe(format, deep) && success {
         let (long_url, long_body, long_marker) = endpoint_test_long_responses_probe(base, model);
         let (long_result, long_log) = send_endpoint_probe(
             &client,
@@ -1827,14 +1903,14 @@ pub async fn test_endpoint(
         match long_result {
             Ok(()) => {
                 last_message = format!(
-                    "{last_message} 长上下文探针也已通过，说明该模型当前可处理更接近真实 Codex 的较长输入。"
+                    "{}，模型: {model} 测试成功: 流式响应完整",
+                    endpoint_test_url_path(&long_url),
                 );
             }
             Err(message) => {
                 success = false;
                 status = "unavailable";
-                last_message =
-                    format!("测试失败：短流式探针已连续通过，但长上下文探针失败。{message}");
+                last_message = message;
             }
         }
     }
@@ -2270,14 +2346,14 @@ data: {"code":"InvalidParameter","message":"Missing required parameter: 'workspa
         );
 
         assert!(message.contains("请求成功但未返回实际流响应结果"));
-        assert!(message.contains("读取上游响应失败"));
-        assert!(message.contains("stream ended before response.completed"));
+        assert!(!message.contains("读取上游响应失败"));
+        assert!(!message.contains("stream ended before response.completed"));
         assert!(!message.contains("网络"));
         assert!(!message.contains("证书"));
     }
 
     #[test]
-    fn endpoint_test_failure_passes_through_raw_upstream_body() {
+    fn endpoint_test_failure_summarizes_upstream_error_for_user() {
         let raw = r#"{"error":{"message":"当前账户暂无生效套餐，请前往钱包页面激活订阅","code":"insufficient_user_quota"}}"#;
         let message = raw_upstream_endpoint_error(
             endpoint_test_kind(UpstreamFormat::OpenAiResponses),
@@ -2287,9 +2363,43 @@ data: {"code":"InvalidParameter","message":"Missing required parameter: 'workspa
             raw,
         );
 
-        assert!(message.contains(raw));
+        assert_eq!(
+            message,
+            "v1/responses，模型: qwen3.7-max 测试失败: 上游返回 402: 当前账户暂无生效套餐，请前往钱包页面激活订阅"
+        );
         assert!(!message.contains("处理方式"));
         assert!(!message.contains("余额页"));
+        assert!(!message.contains("insufficient_user_quota"));
+    }
+
+    #[test]
+    fn endpoint_test_http_error_message_strips_trace_for_user() {
+        let message = raw_upstream_endpoint_error(
+            endpoint_test_kind(UpstreamFormat::OpenAiResponses),
+            403,
+            "https://rawchat.cn/codex/v1/responses",
+            "gpt-5.4",
+            r#"{"error":{"message":"您当前的Codex额度已用完，请返回网页端查看明细。（traceid: 0HNML7IEM0SIF:00000001）","type":"permission_error","code":"codex_quota_exhausted"}}"#,
+        );
+
+        assert_eq!(
+            message,
+            "v1/responses，模型: gpt-5.4 测试失败: 上游返回 403: 您当前的Codex额度已用完，请返回网页端查看明细"
+        );
+        assert!(!message.contains("traceid"));
+        assert!(!message.contains("codex_quota_exhausted"));
+    }
+
+    #[test]
+    fn endpoint_test_responses_quick_mode_still_requires_long_stream_probe() {
+        assert!(endpoint_test_should_run_long_probe(
+            UpstreamFormat::OpenAiResponses,
+            false
+        ));
+        assert!(!endpoint_test_should_run_long_probe(
+            UpstreamFormat::OpenAiChat,
+            false
+        ));
     }
 }
 

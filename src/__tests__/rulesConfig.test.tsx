@@ -115,22 +115,23 @@ describe("Rules page", () => {
     });
   });
 
-  it("shows model mapping strategy and concrete examples for configurable fields", async () => {
+  it("shows fixed routing order and concrete examples for configurable fields", async () => {
     render(<Rules />);
 
-    expect(screen.getByText("模型映射策略")).toBeInTheDocument();
-    expect(screen.getByText(/示例：站点 A 同时配置原生 GPT-5.5/)).toBeInTheDocument();
+    expect(screen.getByText("轮询策略")).toBeInTheDocument();
+    expect(screen.getByText(/已固定为严格按端点列表顺序轮询/)).toBeInTheDocument();
+    expect(screen.getByText("模型映射顺序")).toBeInTheDocument();
+    expect(screen.getByText(/严格跟随端点顺序/)).toBeInTheDocument();
     expect(screen.getByText(/示例：429,500,502,503,504/)).toBeInTheDocument();
     expect(screen.getByText(/示例：30 表示单次上游请求最多等待 30 秒/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText("全局原生优先"));
     fireEvent.click(screen.getByRole("button", { name: "保存规则" }));
 
     await waitFor(() => {
       expect(rulesMocks.setConfig).toHaveBeenCalledWith(
         expect.objectContaining({
           routing: expect.objectContaining({
-            modelMappingStrategy: "global-native-first",
+            modelMappingStrategy: "site-first",
           }),
         }),
       );

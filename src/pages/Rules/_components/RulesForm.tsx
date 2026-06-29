@@ -1,14 +1,6 @@
 import type { ReactNode } from "react";
 
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import type { RulesConfig } from "@/services/modules/rules";
 
@@ -72,33 +64,15 @@ export function RulesForm({ section, value, onChange }: Props) {
   if (section === "routing") {
     return (
       <Block title="路由规则" description="控制默认选路策略与模型、请求头亲和性。">
-        <Field
-          label="策略"
-          description="控制默认候选端点选择方式。"
-          example="示例：balanced 表示按当前轮转位置在可用端点中均衡转发。"
-        >
-          <Select
-            value={value.routing.strategy}
-            onValueChange={(strategy) =>
-              onChange({
-                ...value,
-                routing: {
-                  ...value.routing,
-                  strategy,
-                },
-              })
-            }
-          >
-            <SelectTrigger className="w-44">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="balanced">均衡轮询</SelectItem>
-              <SelectItem value="sticky">粘性优先</SelectItem>
-              <SelectItem value="manual">手动选择</SelectItem>
-            </SelectContent>
-          </Select>
-        </Field>
+        <div className="rounded-md border border-edge-subtle bg-background/70 px-4 py-3 text-sm">
+          <div>轮询策略</div>
+          <div className="mt-1 text-xs text-ink-mute">
+            已固定为严格按端点列表顺序轮询，不再提供可选策略。
+          </div>
+          <div className="mt-1 text-xs text-primary-soft">
+            示例：端点 A、B、C 均可用时，会按 A → B → C → A 的顺序尝试。
+          </div>
+        </div>
 
         <Field
           label="模型亲和"
@@ -140,48 +114,15 @@ export function RulesForm({ section, value, onChange }: Props) {
           />
         </Field>
 
-        <Field
-          label="模型映射策略"
-          description="决定原生模型和映射模型的尝试顺序。默认站点优先。"
-          example="示例：站点 A 同时配置原生 GPT-5.5 和映射 GPT-5.5 时，站点优先会先尝试 A；全局原生优先会先尝试所有原生 GPT-5.5。"
-        >
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant={value.routing.modelMappingStrategy === "site-first" ? "default" : "outline"}
-              onClick={() =>
-                onChange({
-                  ...value,
-                  routing: {
-                    ...value.routing,
-                    modelMappingStrategy: "site-first",
-                  },
-                })
-              }
-            >
-              站点优先
-            </Button>
-            <Button
-              type="button"
-              variant={
-                value.routing.modelMappingStrategy === "global-native-first"
-                  ? "default"
-                  : "outline"
-              }
-              onClick={() =>
-                onChange({
-                  ...value,
-                  routing: {
-                    ...value.routing,
-                    modelMappingStrategy: "global-native-first",
-                  },
-                })
-              }
-            >
-              全局原生优先
-            </Button>
+        <div className="rounded-md border border-edge-subtle bg-background/70 px-4 py-3 text-sm">
+          <div>模型映射顺序</div>
+          <div className="mt-1 text-xs text-ink-mute">
+            已固定为站点内优先：每个站点会先按自身原生模型/映射模型处理，再进入下一个站点。
           </div>
-        </Field>
+          <div className="mt-1 text-xs text-primary-soft">
+            示例：站点 A、B 都配置 GPT-5.5 时，不会先扫完全部原生模型再扫映射模型，而是严格跟随端点顺序。
+          </div>
+        </div>
 
         <Field
           label="最大重试预算"
