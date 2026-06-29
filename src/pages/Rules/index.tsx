@@ -79,7 +79,7 @@ export function Rules() {
                 <div className="flex flex-col gap-1">
                   <h1 className="text-2xl font-light tracking-tight">规则配置</h1>
                   <p className="text-sm text-ink-mute">
-                    单独管理路由、熔断与降级策略，保存后会同步应用到代理运行时。
+                    单独管理路由、熔断与降级策略，保存后会写入配置；运行中的代理将在重启后使用最新规则。
                   </p>
                 </div>
                 <div className="flex items-center gap-2">

@@ -1,3 +1,4 @@
+use std::future;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -191,7 +192,15 @@ pub async fn start_proxy(
     let (tx, rx) = oneshot::channel::<()>();
     let join = tokio::spawn(async move {
         let server = axum::serve(listener, app).with_graceful_shutdown(async move {
-            let _ = rx.await;
+            match rx.await {
+                Ok(()) => {}
+                Err(_) => {
+                    tracing::error!(
+                        "代理服务关闭信号发送端被丢弃，保持监听以避免 Web 管理端 Failed to fetch"
+                    );
+                    future::pending::<()>().await;
+                }
+            }
         });
         if let Err(e) = server.await {
             tracing::error!("代理服务退出: {e}");

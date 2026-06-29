@@ -93,9 +93,9 @@ export function RulesForm({ section, value, onChange }: Props) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="balanced">balanced</SelectItem>
-              <SelectItem value="sticky">sticky</SelectItem>
-              <SelectItem value="manual">manual</SelectItem>
+              <SelectItem value="balanced">均衡轮询</SelectItem>
+              <SelectItem value="sticky">粘性优先</SelectItem>
+              <SelectItem value="manual">手动选择</SelectItem>
             </SelectContent>
           </Select>
         </Field>

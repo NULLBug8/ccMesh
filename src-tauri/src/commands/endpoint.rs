@@ -20,6 +20,7 @@ use crate::modules::usage::TokenUsage;
 use crate::state::AppState;
 
 const ENDPOINT_TEST_MAX_ATTEMPTS: usize = 5;
+const ENDPOINT_TEST_QUICK_ATTEMPTS: usize = 1;
 
 /// 端点配置/测试状态变更事件（payload 为空，前端收到后全量重拉相关查询）。
 const ENDPOINTS_CHANGED_EVENT: &str = "endpoints-changed";
@@ -1622,6 +1623,7 @@ pub async fn test_endpoint(
     state: State<'_, AppState>,
     id: i64,
     model: Option<String>,
+    mode: Option<String>,
 ) -> AppResult<TestResult> {
     let ep = {
         let conn = state.db_pool.get()?;
@@ -1641,7 +1643,16 @@ pub async fn test_endpoint(
         )
     };
     let want = should_use_proxy(ep.use_proxy, proxy_enabled, &proxy_url);
-    let client = build_client(want, &proxy_url, Duration::from_secs(30))?;
+    let deep = mode
+        .as_deref()
+        .map(|v| v.eq_ignore_ascii_case("deep"))
+        .unwrap_or(false);
+    let client_timeout = if deep {
+        Duration::from_secs(30)
+    } else {
+        Duration::from_secs(12)
+    };
+    let client = build_client(want, &proxy_url, client_timeout)?;
 
     let base = ep.api_url.trim_end_matches('/');
     let format = UpstreamFormat::from_transformer_name(&ep.transformer);
@@ -1658,6 +1669,11 @@ pub async fn test_endpoint(
         crate::modules::proxy::resolver::resolve_outbound(&ep, Some(&requested_model))
             .unwrap_or(requested_model);
     let model = outbound_model.as_str();
+    let max_attempts = if deep {
+        ENDPOINT_TEST_MAX_ATTEMPTS
+    } else {
+        ENDPOINT_TEST_QUICK_ATTEMPTS
+    };
 
     let (url, body, stream_marker) = endpoint_test_probe(base, format, model);
     let start = Instant::now();
@@ -1668,7 +1684,7 @@ pub async fn test_endpoint(
     let require_all_stream_attempts = stream_marker.is_some();
     let mut stream_successes = 0usize;
     let mut last_probe_log: Option<EndpointProbeLog> = None;
-    while attempt < ENDPOINT_TEST_MAX_ATTEMPTS {
+    while attempt < max_attempts {
         attempt += 1;
         let request = ProbeAuth::primary_for(&ep.transformer)
             .apply_with_ua(
@@ -1697,13 +1713,12 @@ pub async fn test_endpoint(
                                 "测试成功：{} 连续 {stream_successes} 次短流式探针响应完整，模型 {model} 当前可用。注意：这只证明短请求在本轮测试中稳定，真实长上下文/工具/图片请求仍以上游原始返回为准。",
                                 endpoint_test_kind(format),
                             );
-                            if !require_all_stream_attempts || attempt >= ENDPOINT_TEST_MAX_ATTEMPTS
-                            {
+                            if !require_all_stream_attempts || attempt >= max_attempts {
                                 success = true;
                                 status = "available";
                                 break;
                             }
-                            if attempt < ENDPOINT_TEST_MAX_ATTEMPTS {
+                            if attempt < max_attempts {
                                 tokio::time::sleep(Duration::from_millis(350)).await;
                             }
                             continue;
@@ -1789,11 +1804,11 @@ pub async fn test_endpoint(
                 break;
             }
         }
-        if attempt < ENDPOINT_TEST_MAX_ATTEMPTS {
+        if attempt < max_attempts {
             tokio::time::sleep(Duration::from_millis(350)).await;
         }
     }
-    if success && matches!(format, UpstreamFormat::OpenAiResponses) {
+    if deep && success && matches!(format, UpstreamFormat::OpenAiResponses) {
         let (long_url, long_body, long_marker) = endpoint_test_long_responses_probe(base, model);
         let (long_result, long_log) = send_endpoint_probe(
             &client,

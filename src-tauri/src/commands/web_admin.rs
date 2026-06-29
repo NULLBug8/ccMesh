@@ -117,6 +117,7 @@ struct ReorderArgs {
 struct TestEndpointArgs {
     id: i64,
     model: Option<String>,
+    mode: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -409,8 +410,14 @@ pub async fn invoke_http(
             "test_endpoint" => {
                 let args: TestEndpointArgs = parse_args(body.args)?;
                 to_json(
-                    endpoint::test_endpoint(app.clone(), state.clone(), args.id, args.model)
-                        .await?,
+                    endpoint::test_endpoint(
+                        app.clone(),
+                        state.clone(),
+                        args.id,
+                        args.model,
+                        args.mode,
+                    )
+                    .await?,
                 )
             }
             "query_endpoint_balance" => {
