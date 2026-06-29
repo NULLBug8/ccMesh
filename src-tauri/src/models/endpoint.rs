@@ -94,6 +94,7 @@ pub struct Endpoint {
     pub transformer: String,
     /// 可选锁定模型：非空则强制覆盖客户端请求的 model（专用型端点）；空则透传。
     pub model: String,
+    pub test_model: String,
     /// 对外暴露/已选的模型清单（聚合型端点，供 /v1/models 公布与 UI 展示）。
     pub models: Vec<String>,
     /// 点亮（对外公布）的模型子集：`models` 的子集。空数组表示全部公布（向后兼容旧端点）；
@@ -129,6 +130,8 @@ pub struct CreateEndpointRequest {
     #[serde(default)]
     pub model: String,
     #[serde(default)]
+    pub test_model: String,
+    #[serde(default)]
     pub models: Vec<String>,
     #[serde(default)]
     pub active_models: Vec<String>,
@@ -151,6 +154,7 @@ pub struct UpdateEndpointRequest {
     pub use_proxy: Option<bool>,
     pub transformer: Option<String>,
     pub model: Option<String>,
+    pub test_model: Option<String>,
     pub models: Option<Vec<String>>,
     pub active_models: Option<Vec<String>>,
     pub model_mappings: Option<Vec<ModelMapping>>,

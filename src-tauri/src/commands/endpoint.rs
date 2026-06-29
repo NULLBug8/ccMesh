@@ -1,5 +1,6 @@
 use std::time::{Duration, Instant};
 
+use futures::stream::{self, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, State};
@@ -90,6 +91,7 @@ pub fn clone_endpoint(state: State<AppState>, id: i64) -> AppResult<Endpoint> {
         use_proxy: src.use_proxy,
         transformer: src.transformer,
         model: src.model,
+        test_model: src.test_model,
         models: src.models,
         active_models: src.active_models,
         model_mappings: src.model_mappings,
@@ -134,6 +136,41 @@ pub struct TestResult {
     pub status: String, // available / unavailable
     pub latency_ms: u64,
     pub message: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EndpointBatchTestItem {
+    pub id: i64,
+    pub name: String,
+    pub model: String,
+    pub success: bool,
+    pub status: String,
+    pub latency_ms: u64,
+    pub message: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EndpointBatchTestResult {
+    pub total: usize,
+    pub success: usize,
+    pub failed: usize,
+    pub items: Vec<EndpointBatchTestItem>,
+}
+
+fn extract_test_model_from_message(message: &str) -> String {
+    for marker in ["模型:", "模型："] {
+        if let Some((_, rest)) = message.split_once(marker) {
+            return rest
+                .trim()
+                .split(|c: char| c.is_whitespace() || matches!(c, ',' | '，'))
+                .next()
+                .unwrap_or("")
+                .to_string();
+        }
+    }
+    String::new()
 }
 
 #[derive(Serialize)]
@@ -1381,6 +1418,36 @@ fn endpoint_test_url_path(url: &str) -> String {
     }
 }
 
+fn stream_probe_has_actual_output(text: &str, marker: &str) -> bool {
+    if !text.contains(marker) {
+        return false;
+    }
+    for line in text.lines() {
+        let data = line.trim().strip_prefix("data:").map(str::trim);
+        let Some(data) = data else {
+            continue;
+        };
+        if data.is_empty() || data == "[DONE]" {
+            continue;
+        }
+        if data.contains("response.output_text.delta")
+            || data.contains("\"delta\"")
+            || data.contains("content_block_delta")
+            || data.contains("message_delta")
+            || data.contains("chat.completion.chunk")
+        {
+            return true;
+        }
+        if data.contains("\"choices\"") && data.contains("\"content\"") {
+            return true;
+        }
+        if data.contains("\"type\":\"message\"") && data.contains("\"content\"") {
+            return true;
+        }
+    }
+    false
+}
+
 fn truncate_endpoint_message_body(body: &str, max_chars: usize) -> String {
     let trimmed = body.trim();
     let mut out: String = trimmed.chars().take(max_chars).collect();
@@ -1438,6 +1505,30 @@ fn endpoint_connect_error_message(url: &str, model: &str) -> String {
     )
 }
 
+fn select_endpoint_test_model(
+    ep: &Endpoint,
+    explicit_model: Option<String>,
+    global_model: &str,
+    format: UpstreamFormat,
+) -> String {
+    explicit_model
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| {
+            let value = ep.test_model.trim();
+            (!value.is_empty()).then(|| value.to_string())
+        })
+        .or_else(|| {
+            let value = global_model.trim();
+            (!value.is_empty()).then(|| value.to_string())
+        })
+        .or_else(|| {
+            let value = ep.model.trim();
+            (!value.is_empty()).then(|| value.to_string())
+        })
+        .or_else(|| ep.models.iter().find(|m| !m.trim().is_empty()).cloned())
+        .unwrap_or_else(|| format.default_model().to_string())
+}
+
 async fn send_endpoint_probe(
     client: &reqwest::Client,
     transformer: &str,
@@ -1481,7 +1572,7 @@ async fn send_endpoint_probe(
     };
     if code == 200 {
         if let Some(marker) = marker {
-            if text.contains(marker) {
+            if stream_probe_has_actual_output(&text, marker) {
                 return (Ok(()), log);
             }
             return (
@@ -1698,7 +1789,7 @@ pub async fn test_endpoint(
     };
 
     // 测试 client 遵循代理决策：端点 use_proxy 或全局 proxyEnabled（且地址非空）则经代理，否则直连。
-    let (proxy_enabled, proxy_url, openai_ua, claude_cli_ua) = {
+    let (proxy_enabled, proxy_url, openai_ua, claude_cli_ua, global_test_model) = {
         let conn = state.db_pool.get()?;
         let cfg = config_repo::get_config(&conn)?;
         (
@@ -1706,6 +1797,7 @@ pub async fn test_endpoint(
             cfg.proxy_url,
             cfg.openai_ua,
             cfg.claude_cli_ua,
+            cfg.global_test_model,
         )
     };
     let want = should_use_proxy(ep.use_proxy, proxy_enabled, &proxy_url);
@@ -1722,15 +1814,8 @@ pub async fn test_endpoint(
 
     let base = ep.api_url.trim_end_matches('/');
     let format = UpstreamFormat::from_transformer_name(&ep.transformer);
-    // 优先用调用方指定的模型（前端选择），否则端点锁定 model，再否则按格式回落默认
-    let fallback = format.default_model();
-    let requested_model = model.filter(|s| !s.trim().is_empty()).unwrap_or_else(|| {
-        if ep.model.is_empty() {
-            fallback.to_string()
-        } else {
-            ep.model.clone()
-        }
-    });
+    // 模型优先级：调用方指定 > 端点测试模型 > 全局测试模型 > 锁定模型 > 模型列表 > 格式默认。
+    let requested_model = select_endpoint_test_model(&ep, model, &global_test_model, format);
     let outbound_model =
         crate::modules::proxy::resolver::resolve_outbound(&ep, Some(&requested_model))
             .unwrap_or(requested_model);
@@ -1765,7 +1850,7 @@ pub async fn test_endpoint(
                 if code == 200 && stream_marker.is_some() {
                     let marker = stream_marker.unwrap();
                     match resp.text().await {
-                        Ok(text) if text.contains(marker) => {
+                        Ok(text) if stream_probe_has_actual_output(&text, marker) => {
                             last_probe_log = Some(EndpointProbeLog {
                                 url: url.clone(),
                                 body: body.clone(),
@@ -1946,6 +2031,49 @@ pub async fn test_endpoint(
 }
 
 /// 代理连通性检测目标：轻量 204 连通性 URL（经代理 GET，验证代理能出网）。
+#[tauri::command]
+pub async fn test_all_endpoints(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    mode: Option<String>,
+) -> AppResult<EndpointBatchTestResult> {
+    let endpoints = {
+        let conn = state.db_pool.get()?;
+        endpoint_repo::list_all(&conn)?
+    };
+    let items = stream::iter(endpoints.into_iter().map(|ep| {
+        let app = app.clone();
+        let state = state.clone();
+        let mode = mode.clone();
+        async move {
+            let result = test_endpoint(app, state, ep.id, None, mode).await?;
+            let model = extract_test_model_from_message(&result.message);
+            Ok::<_, AppError>(EndpointBatchTestItem {
+                id: ep.id,
+                name: ep.name,
+                model,
+                success: result.success,
+                status: result.status,
+                latency_ms: result.latency_ms,
+                message: result.message,
+            })
+        }
+    }))
+    .buffer_unordered(3)
+    .collect::<Vec<_>>()
+    .await
+    .into_iter()
+    .collect::<AppResult<Vec<_>>>()?;
+    let total = items.len();
+    let success = items.iter().filter(|item| item.success).count();
+    Ok(EndpointBatchTestResult {
+        total,
+        success,
+        failed: total.saturating_sub(success),
+        items,
+    })
+}
+
 const PROXY_TEST_URL: &str = "https://www.gstatic.com/generate_204";
 
 /// 测试代理连通性：严格经给定代理地址访问连通性 URL（地址无效直接报错，不回落直连以免误判）。
@@ -2350,6 +2478,18 @@ data: {"code":"InvalidParameter","message":"Missing required parameter: 'workspa
         assert!(!message.contains("stream ended before response.completed"));
         assert!(!message.contains("网络"));
         assert!(!message.contains("证书"));
+    }
+
+    #[test]
+    fn stream_probe_requires_marker_and_actual_output() {
+        let empty_completed = "event: response.completed\ndata: {\"type\":\"response.completed\"}\n\n";
+        assert!(!stream_probe_has_actual_output(
+            empty_completed,
+            "response.completed"
+        ));
+
+        let with_delta = "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"OK\"}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\"}\n\n";
+        assert!(stream_probe_has_actual_output(with_delta, "response.completed"));
     }
 
     #[test]

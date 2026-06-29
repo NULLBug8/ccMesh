@@ -216,6 +216,7 @@ pub fn run() {
             commands::endpoint::reorder_endpoints,
             commands::endpoint::clone_endpoint,
             commands::endpoint::test_endpoint,
+            commands::endpoint::test_all_endpoints,
             commands::endpoint::query_endpoint_balance,
             commands::endpoint::test_endpoint_balance_query,
             commands::endpoint::probe_endpoint_balance_templates,

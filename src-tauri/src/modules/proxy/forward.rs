@@ -1766,6 +1766,7 @@ mod tests {
             use_proxy: false,
             transformer: "codex".into(),
             model: String::new(),
+            test_model: String::new(),
             models: Vec::new(),
             active_models: Vec::new(),
             model_mappings: Vec::new(),

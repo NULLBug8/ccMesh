@@ -19,6 +19,7 @@ const balanceMocks = vi.hoisted(() => ({
       useProxy: false,
       transformer: "openai",
       model: "",
+      testModel: "",
       models: ["gpt-5.5"],
       activeModels: [],
       modelMappings: [],

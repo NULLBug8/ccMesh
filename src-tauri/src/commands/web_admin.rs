@@ -121,6 +121,12 @@ struct TestEndpointArgs {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TestAllEndpointsArgs {
+    mode: Option<String>,
+}
+
+#[derive(Deserialize)]
 struct QueryEndpointBalanceArgs {
     id: i64,
 }
@@ -419,6 +425,10 @@ pub async fn invoke_http(
                     )
                     .await?,
                 )
+            }
+            "test_all_endpoints" => {
+                let args: TestAllEndpointsArgs = parse_args(body.args)?;
+                to_json(endpoint::test_all_endpoints(app.clone(), state.clone(), args.mode).await?)
             }
             "query_endpoint_balance" => {
                 let args: QueryEndpointBalanceArgs = parse_args(body.args)?;

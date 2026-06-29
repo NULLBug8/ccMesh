@@ -1,10 +1,13 @@
 import { useMemo, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 import { PageLayoutEditor } from "@/components/business/page-layout/PageLayoutEditor";
 import { PageSectionHost } from "@/components/business/page-layout/PageSectionHost";
 import { useEndpoints } from "@/hooks/useEndpoints";
 import { useEndpointHealthEvents } from "@/hooks/useEndpointHealth";
 import type { Endpoint } from "@/services/modules/endpoint";
+import { endpointApi } from "@/services/modules/endpoint";
 import { resolveViewLayout, useFilterStore, useLayoutStore, usePageLayoutStore } from "@/stores";
 import { DnDList } from "./_components/DnDList";
 import { EndpointForm } from "./_components/EndpointForm";
@@ -52,6 +55,23 @@ export function Endpoints() {
     setFormOpen(true);
   };
 
+  const refreshHealth = useMutation({
+    mutationFn: () => endpointApi.testAll("quick"),
+    onSuccess: (result) => {
+      const failed = result.items.filter((item) => !item.success).slice(0, 3);
+      if (result.failed === 0) {
+        toast.success(`连通性更新完成：${result.success}/${result.total} 可用`);
+      } else {
+        toast.error(
+          `连通性更新完成：${result.success}/${result.total} 可用，失败 ${result.failed} 个。${failed
+            .map((item) => `${item.name}: ${item.message}`)
+            .join("；")}`,
+        );
+      }
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : String(error)),
+  });
+
   return (
     <div className="flex h-full w-full min-w-0 flex-col gap-5">
       <PageLayoutEditor view="endpoints" definition={endpointsLayoutDefinition} />
@@ -64,7 +84,11 @@ export function Endpoints() {
             render: () => (
               <div className="flex shrink-0 flex-col gap-5">
                 <h1 className="text-2xl font-light tracking-tight">端点管理</h1>
-                <FilterBar onCreate={openCreate} />
+                <FilterBar
+                  onCreate={openCreate}
+                  onRefreshHealth={() => refreshHealth.mutate()}
+                  refreshing={refreshHealth.isPending}
+                />
               </div>
             ),
           },

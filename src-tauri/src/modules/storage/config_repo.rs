@@ -29,6 +29,7 @@ pub const SAFE_CONFIG_KEYS: &[&str] = &[
     "update_checkInterval",
     "openaiUa",
     "claudeCliUa",
+    "globalTestModel",
     "rulesConfig",
 ];
 
@@ -105,6 +106,7 @@ pub fn get_config(conn: &Connection) -> AppResult<AppConfig> {
         proxy_for_update: parse_bool(&m, "proxyForUpdate", d.proxy_for_update),
         openai_ua: parse_str_allow_empty(&m, "openaiUa", &d.openai_ua),
         claude_cli_ua: parse_str_allow_empty(&m, "claudeCliUa", &d.claude_cli_ua),
+        global_test_model: parse_str_allow_empty(&m, "globalTestModel", &d.global_test_model),
         update: UpdateSettings {
             auto_check: parse_bool(&m, "update_autoCheck", true),
             check_interval: parse_i64(&m, "update_checkInterval", 24),

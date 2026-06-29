@@ -315,6 +315,7 @@ export interface Endpoint {
   useProxy: boolean;
   transformer: string;
   model: string;
+  testModel: string;
   models: string[];
   /** 点亮（对外公布）的模型子集：`models` 的子集。空数组=全部公布（向后兼容旧端点）。 */
   activeModels: string[];
@@ -336,6 +337,7 @@ export interface CreateEndpointRequest {
   useProxy?: boolean;
   transformer?: string;
   model?: string;
+  testModel?: string;
   models?: string[];
   activeModels?: string[];
   modelMappings?: ModelMapping[];
@@ -395,6 +397,19 @@ export interface EndpointTestResult {
   message: string;
 }
 
+export interface EndpointBatchTestItem extends EndpointTestResult {
+  id: number;
+  name: string;
+  model: string;
+}
+
+export interface EndpointBatchTestResult {
+  total: number;
+  success: number;
+  failed: number;
+  items: EndpointBatchTestItem[];
+}
+
 export const endpointApi = {
   list: () => request<Endpoint[]>("list_endpoints"),
   create: (req: CreateEndpointRequest) =>
@@ -407,6 +422,8 @@ export const endpointApi = {
   clone: (id: number) => request<Endpoint>("clone_endpoint", { id }),
   test: (id: number, model?: string, mode: "quick" | "deep" = "quick") =>
     request<EndpointTestResult>("test_endpoint", { id, model, mode }),
+  testAll: (mode: "quick" | "deep" = "quick") =>
+    request<EndpointBatchTestResult>("test_all_endpoints", { mode }),
   queryBalance: (id: number) =>
     request<EndpointBalanceResult>("query_endpoint_balance", { id }),
   testBalanceTemplate: (id: number, balanceQuery: BalanceQueryConfig) =>

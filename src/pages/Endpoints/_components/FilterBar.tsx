@@ -1,4 +1,4 @@
-import { LayoutGridIcon, ListIcon, PlusIcon } from "lucide-react";
+import { LayoutGridIcon, ListIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +13,15 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { useFilterStore, useLayoutStore } from "@/stores";
 
-export function FilterBar({ onCreate }: { onCreate: () => void }) {
+export function FilterBar({
+  onCreate,
+  onRefreshHealth,
+  refreshing,
+}: {
+  onCreate: () => void;
+  onRefreshHealth: () => void;
+  refreshing?: boolean;
+}) {
   const search = useFilterStore((s) => s.search);
   const enabledOnly = useFilterStore((s) => s.enabledOnly);
   const transformer = useFilterStore((s) => s.transformer);
@@ -60,6 +68,10 @@ export function FilterBar({ onCreate }: { onCreate: () => void }) {
         ) : (
           <ListIcon className="size-4" />
         )}
+      </Button>
+      <Button variant="outline" onClick={onRefreshHealth} disabled={refreshing}>
+        <RefreshCwIcon className={refreshing ? "size-4 animate-spin" : "size-4"} />
+        更新连通性
       </Button>
       <Button onClick={onCreate}>
         <PlusIcon className="size-4" /> 新建端点

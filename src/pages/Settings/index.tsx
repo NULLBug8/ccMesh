@@ -352,6 +352,19 @@ export function Settings() {
             onBlur={(event) => save({ claudeCliUa: event.target.value })}
           />
         </div>
+        <div className="flex flex-col gap-1.5 px-5 py-3">
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="text-sm">全局连通性测试模型</span>
+            <span className="text-xs text-ink-mute">
+              端点未单独设置时使用；仍会被端点模型映射转换
+            </span>
+          </div>
+          <Input
+            placeholder="例如 gpt-5.5 / claude-sonnet-4 / qwen3.7-max"
+            defaultValue={cfg.globalTestModel}
+            onBlur={(event) => save({ globalTestModel: event.target.value })}
+          />
+        </div>
       </div>
     </section>
   );

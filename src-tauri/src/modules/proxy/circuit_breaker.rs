@@ -368,6 +368,7 @@ mod tests {
             use_proxy: false,
             transformer: "claude".into(),
             model: "".into(),
+            test_model: "".into(),
             models: Vec::new(),
             active_models: Vec::new(),
             model_mappings: Vec::new(),

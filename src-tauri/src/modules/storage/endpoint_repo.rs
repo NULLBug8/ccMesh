@@ -3,7 +3,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 use crate::error::{AppError, AppResult};
 use crate::models::endpoint::{CreateEndpointRequest, Endpoint, UpdateEndpointRequest};
 
-const COLS: &str = "id, name, api_url, api_key, auth_mode, enabled, use_proxy, transformer, model, models, active_models, model_mappings, balance_query, remark, sort_order, test_status, created_at, updated_at";
+const COLS: &str = "id, name, api_url, api_key, auth_mode, enabled, use_proxy, transformer, model, test_model, models, active_models, model_mappings, balance_query, remark, sort_order, test_status, created_at, updated_at";
 
 fn row_to_endpoint(row: &Row) -> rusqlite::Result<Endpoint> {
     Ok(Endpoint {
@@ -16,6 +16,7 @@ fn row_to_endpoint(row: &Row) -> rusqlite::Result<Endpoint> {
         use_proxy: row.get::<_, i64>("use_proxy")? != 0,
         transformer: row.get("transformer")?,
         model: row.get("model")?,
+        test_model: row.get("test_model")?,
         models: {
             let s: String = row.get("models")?;
             serde_json::from_str(&s).unwrap_or_default()
@@ -102,8 +103,8 @@ pub fn create(conn: &Connection, req: &CreateEndpointRequest) -> AppResult<Endpo
     let active = sanitize_active(&req.models, &req.active_models);
     conn.execute(
         "INSERT INTO endpoints
-            (name, api_url, api_key, auth_mode, enabled, use_proxy, transformer, model, models, active_models, model_mappings, balance_query, remark, sort_order)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            (name, api_url, api_key, auth_mode, enabled, use_proxy, transformer, model, test_model, models, active_models, model_mappings, balance_query, remark, sort_order)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
         params![
             req.name,
             req.api_url,
@@ -113,6 +114,7 @@ pub fn create(conn: &Connection, req: &CreateEndpointRequest) -> AppResult<Endpo
             req.use_proxy as i64,
             req.transformer,
             req.model,
+            req.test_model,
             serde_json::to_string(&req.models).unwrap_or_else(|_| "[]".into()),
             serde_json::to_string(&active).unwrap_or_else(|_| "[]".into()),
             serde_json::to_string(&req.model_mappings).unwrap_or_else(|_| "[]".into()),
@@ -159,6 +161,9 @@ pub fn update(conn: &Connection, id: i64, req: &UpdateEndpointRequest) -> AppRes
     if let Some(ref v) = req.model {
         e.model = v.clone();
     }
+    if let Some(ref v) = req.test_model {
+        e.test_model = v.clone();
+    }
     if let Some(ref v) = req.models {
         e.models = v.clone();
     }
@@ -180,9 +185,9 @@ pub fn update(conn: &Connection, id: i64, req: &UpdateEndpointRequest) -> AppRes
     conn.execute(
         "UPDATE endpoints SET
             name = ?1, api_url = ?2, api_key = ?3, auth_mode = ?4, enabled = ?5,
-            use_proxy = ?6, transformer = ?7, model = ?8, models = ?9, active_models = ?10,
-            model_mappings = ?11, balance_query = ?12, remark = ?13, updated_at = datetime('now')
-         WHERE id = ?14",
+            use_proxy = ?6, transformer = ?7, model = ?8, test_model = ?9, models = ?10, active_models = ?11,
+            model_mappings = ?12, balance_query = ?13, remark = ?14, updated_at = datetime('now')
+         WHERE id = ?15",
         params![
             e.name,
             e.api_url,
@@ -192,6 +197,7 @@ pub fn update(conn: &Connection, id: i64, req: &UpdateEndpointRequest) -> AppRes
             e.use_proxy as i64,
             e.transformer,
             e.model,
+            e.test_model,
             serde_json::to_string(&e.models).unwrap_or_else(|_| "[]".into()),
             serde_json::to_string(&e.active_models).unwrap_or_else(|_| "[]".into()),
             serde_json::to_string(&e.model_mappings).unwrap_or_else(|_| "[]".into()),
@@ -254,6 +260,7 @@ mod tests {
             use_proxy: false,
             transformer: "claude".into(),
             model: String::new(),
+            test_model: String::new(),
             models: Vec::new(),
             active_models: Vec::new(),
             model_mappings: Vec::new(),
@@ -510,5 +517,27 @@ mod tests {
         assert!(parsed.enabled);
         assert_eq!(parsed.template_id, "openai-credit-grants");
         assert_eq!(parsed.path, "/dashboard/billing/credit_grants");
+    }
+
+    #[test]
+    fn test_model_roundtrip() {
+        let c = db();
+        let mut r = req("test-model");
+        r.test_model = "gpt-5.5".into();
+        let created = create(&c, &r).unwrap();
+        assert_eq!(created.test_model, "gpt-5.5");
+
+        update(
+            &c,
+            created.id,
+            &UpdateEndpointRequest {
+                test_model: Some("qwen3.7-max".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let got = get_by_id(&c, created.id).unwrap().unwrap();
+        assert_eq!(got.test_model, "qwen3.7-max");
     }
 }

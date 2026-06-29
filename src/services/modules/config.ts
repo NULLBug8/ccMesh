@@ -33,6 +33,7 @@ export interface AppConfig {
   proxyForUpdate: boolean;
   openaiUa: string;
   claudeCliUa: string;
+  globalTestModel: string;
   update: UpdateSettings;
   webdav: WebDavConfig;
   rules: RulesConfig;

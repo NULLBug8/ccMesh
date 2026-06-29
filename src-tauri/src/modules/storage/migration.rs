@@ -112,6 +112,7 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE request_logs ADD COLUMN error_body TEXT;",
     "ALTER TABLE request_logs ADD COLUMN trace_detail TEXT;",
     "ALTER TABLE endpoints ADD COLUMN balance_query TEXT NOT NULL DEFAULT '{}';",
+    "ALTER TABLE endpoints ADD COLUMN test_model TEXT NOT NULL DEFAULT '';",
 ];
 
 pub fn run_migrations(conn: &Connection) -> AppResult<()> {
@@ -148,6 +149,14 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
         let mut stmt = conn.prepare("PRAGMA table_info(request_logs)").unwrap();
+        let rows = stmt.query_map([], |row| row.get::<_, String>(1)).unwrap();
+        rows.filter_map(Result::ok).collect()
+    }
+
+    fn endpoint_columns() -> Vec<String> {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        let mut stmt = conn.prepare("PRAGMA table_info(endpoints)").unwrap();
         let rows = stmt.query_map([], |row| row.get::<_, String>(1)).unwrap();
         rows.filter_map(Result::ok).collect()
     }
@@ -252,6 +261,12 @@ mod tests {
     fn v11_adds_trace_detail_column() {
         let cols = request_log_columns();
         assert!(cols.contains(&"trace_detail".to_string()));
+    }
+
+    #[test]
+    fn v13_adds_endpoint_test_model_column() {
+        let cols = endpoint_columns();
+        assert!(cols.contains(&"test_model".to_string()));
     }
 
     #[test]

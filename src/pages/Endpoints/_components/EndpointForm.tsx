@@ -44,6 +44,7 @@ interface FormState {
   apiKey: string;
   transformer: string;
   model: string;
+  testModel: string;
   models: string[];
   /** 点亮（对外公布）的模型子集：models 的子集。空数组=全部公布（兼容旧端点）。 */
   activeModels: string[];
@@ -58,6 +59,7 @@ const EMPTY: FormState = {
   apiKey: "",
   transformer: "claude",
   model: "",
+  testModel: "",
   models: [],
   activeModels: [],
   useProxy: false,
@@ -103,6 +105,7 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
           apiKey: editing.apiKey,
           transformer: editing.transformer,
           model: editing.model,
+          testModel: editing.testModel ?? "",
           models: editing.models ?? [],
           activeModels: editing.activeModels ?? [],
           useProxy: editing.useProxy ?? false,
@@ -285,6 +288,7 @@ export function EndpointForm({ open, onOpenChange, editing }: Props) {
     { k: "apiUrl", label: "API URL", ph: "https://api.anthropic.com" },
     { k: "apiKey", label: "API Key" },
     { k: "model", label: "锁定模型（可选，填则强制覆盖请求 model）" },
+    { k: "testModel", label: "连通性测试模型（可选，优先用于测试按钮）" },
     { k: "remark", label: "备注（可选）" },
   ];
 

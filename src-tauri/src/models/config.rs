@@ -62,6 +62,7 @@ pub struct AppConfig {
     pub openai_ua: String,
     /// 转发到 Claude 端点时覆盖 User-Agent（空=透传客户端）。
     pub claude_cli_ua: String,
+    pub global_test_model: String,
     pub update: UpdateSettings,
     pub webdav: WebDavConfig,
     pub rules: RulesConfig,
@@ -86,6 +87,7 @@ impl Default for AppConfig {
             proxy_for_update: false,
             openai_ua: ua::codex_probe_ua(),
             claude_cli_ua: ua::CLAUDE_PROBE_UA.into(),
+            global_test_model: String::new(),
             update: UpdateSettings::default(),
             webdav: WebDavConfig::default(),
             rules: RulesConfig::default(),

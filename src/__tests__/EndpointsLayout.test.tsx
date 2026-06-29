@@ -1,8 +1,20 @@
 import { render } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 
 import { Endpoints } from "@/pages/Endpoints";
 import { useFilterStore, useLayoutStore, usePageLayoutStore } from "@/stores";
+
+function renderEndpoints() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={client}>
+      <Endpoints />
+    </QueryClientProvider>,
+  );
+}
 
 vi.mock("@/hooks/useEndpoints", () => ({
   useEndpoints: () => ({
@@ -62,7 +74,7 @@ describe("Endpoints layout", () => {
       layoutByView: {},
     });
 
-    const { container } = render(<Endpoints />);
+    const { container } = renderEndpoints();
     const page = container.firstElementChild;
 
     expect(page).toHaveClass("w-full");
@@ -81,7 +93,7 @@ describe("Endpoints layout", () => {
       layoutByView: {},
     });
 
-    render(<Endpoints />);
+    renderEndpoints();
     const headerSection = document.querySelector("[data-testid='filter-bar']")
       ?.parentElement?.parentElement;
 
