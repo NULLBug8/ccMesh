@@ -3,7 +3,7 @@ export type TransportEvent<T> = {
 };
 
 export interface AppTransport {
-  kind: "desktop" | "web";
+  kind: "web";
   request<T>(command: string, args?: Record<string, unknown>): Promise<T>;
   subscribe<T>(
     event: string,

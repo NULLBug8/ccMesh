@@ -1,4 +1,4 @@
-use tauri::State;
+use crate::runtime::State;
 
 use crate::error::AppResult;
 use crate::models::stats::{RequestLogPage, StatsHistoryPage, StatsOverview};
@@ -6,13 +6,11 @@ use crate::modules::storage::{request_logs_repo, stats_repo};
 use crate::state::AppState;
 
 /// 四周期统计总览 + 趋势（先 flush 内存增量再聚合）。
-#[tauri::command]
 pub fn get_stats(state: State<AppState>) -> AppResult<StatsOverview> {
     state.stats.overview()
 }
 
 /// 请求明细分页查询（时间段[毫秒] + 可选端点过滤，按时间倒序）。
-#[tauri::command]
 pub fn get_request_logs(
     state: State<AppState>,
     start_ms: Option<i64>,
@@ -31,7 +29,6 @@ pub fn get_request_logs(
 }
 
 /// 历史记录分页（跨全时间，按端点×日聚合行，date 倒序）。
-#[tauri::command]
 pub fn get_stats_history(
     state: State<AppState>,
     page: i64,
@@ -46,7 +43,6 @@ pub fn get_stats_history(
 }
 
 /// 删除单端点单日的历史记录，返回删除行数。
-#[tauri::command]
 pub fn delete_daily_stat(
     state: State<AppState>,
     endpoint_name: String,
@@ -57,7 +53,6 @@ pub fn delete_daily_stat(
 }
 
 /// 删除某一天全部端点的历史记录，返回删除行数。
-#[tauri::command]
 pub fn delete_stats_by_date(state: State<AppState>, date: String) -> AppResult<usize> {
     let conn = state.db_pool.get()?;
     stats_repo::delete_by_date(&conn, &date)

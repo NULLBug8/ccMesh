@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use tauri::{AppHandle, Manager};
+use crate::runtime::AppHandle;
 
 use crate::error::{AppError, AppResult};
 

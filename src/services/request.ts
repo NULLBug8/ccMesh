@@ -1,13 +1,11 @@
-import type { EventCallback, UnlistenFn } from "@tauri-apps/api/event";
-
-import { createTransport } from "./runtime";
+﻿import { createTransport } from "./runtime";
 
 const transport = createTransport();
 
-/**
- * 统一调用后端命令。约定：命令名 snake_case，参数键 camelCase。
- * 桌面端走 Tauri invoke，Web 端走管理接口。
- */
+export type UnlistenFn = () => void;
+export type EventCallback<T> = (event: { payload: T }) => void;
+
+/** 调用 Web 后端命令。命令名使用 snake_case，参数键使用 camelCase。 */
 export async function request<T>(
   command: string,
   args?: Record<string, unknown>,
@@ -25,9 +23,7 @@ export async function request<T>(
   }
 }
 
-/**
- * 统一订阅后端事件。桌面端走 Tauri listen，Web 端走 SSE。
- */
+/** 订阅 Web 后端 SSE 事件。 */
 export async function subscribe<T>(
   event: string,
   handler: EventCallback<T>,
@@ -45,5 +41,4 @@ export const Events = {
   endpointHealthChanged: "endpoint-health-changed",
   endpointsChanged: "endpoints-changed",
   logLine: "log-line",
-  updateProgress: "update-progress",
 } as const;

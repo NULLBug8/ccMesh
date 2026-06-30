@@ -106,12 +106,6 @@ patchFile(
   `$1${newVersion}$2`,
 );
 
-// src-tauri/tauri.conf.json —— 顶层 "version"
-patchFile(
-  'src-tauri/tauri.conf.json',
-  /("version"\s*:\s*")[^"]*(")/,
-  `$1${newVersion}$2`,
-);
 
 console.log('');
 console.log(`版本已更新到 ${newVersion}`);

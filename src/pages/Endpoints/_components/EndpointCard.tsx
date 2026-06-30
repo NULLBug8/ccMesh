@@ -33,7 +33,6 @@ import {
   outboundModels,
   type Endpoint,
 } from "@/services/modules/endpoint";
-import { isWebRuntime } from "@/services/runtime";
 import type { EndpointView } from "@/stores";
 import { ModelMappingDialog } from "./ModelMappingDialog";
 import { TestBadge } from "./TestBadge";
@@ -86,7 +85,6 @@ export function EndpointCard({
   dragHandleRef,
   view = "list",
 }: Props) {
-  const webRuntime = isWebRuntime();
   const qc = useQueryClient();
   const invalidate = () => qc.invalidateQueries({ queryKey: ["endpoints"] });
   const [testOpen, setTestOpen] = useState(false);
@@ -274,12 +272,7 @@ export function EndpointCard({
         onClick={async (e) => {
           e.stopPropagation();
           try {
-            if (webRuntime) {
-              window.open(endpoint.apiUrl, "_blank", "noopener,noreferrer");
-              return;
-            }
-            const { openUrl } = await import("@tauri-apps/plugin-opener");
-            await openUrl(endpoint.apiUrl);
+            window.open(endpoint.apiUrl, "_blank", "noopener,noreferrer");
           } catch (err) {
             toast.error(errMsg(err));
           }

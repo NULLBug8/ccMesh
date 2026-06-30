@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex, OnceLock};
 
-use tauri::AppHandle;
+use crate::runtime::AppHandle;
 
 use crate::modules::proxy::server::ProxyHandle;
 use crate::modules::stats::aggregator::StatsAggregator;

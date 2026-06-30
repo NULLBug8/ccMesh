@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter};
+use crate::runtime::AppHandle;
 use tracing::field::{Field, Visit};
 use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::layer::{Context, Layer};

@@ -1,5 +1,5 @@
 use serde::Serialize;
-use tauri::State;
+use crate::runtime::State;
 
 use crate::error::AppResult;
 use crate::modules::proxy::circuit_breaker::EndpointHealthInfo;
@@ -28,7 +28,6 @@ pub struct HealthInfo {
 }
 
 /// 健康概览：状态、设备 ID、代理运行态、启用端点数、脱敏端点列表。
-#[tauri::command]
 pub fn get_health(state: State<AppState>) -> AppResult<HealthInfo> {
     let conn = state.db_pool.get()?;
     let all = endpoint_repo::list_all(&conn)?;
@@ -55,7 +54,6 @@ pub fn get_health(state: State<AppState>) -> AppResult<HealthInfo> {
 
 /// 端点实时健康/熔断态：代理运行时读运行期熔断器（无熔断记录的端点回退 test_status，
 /// 保证"实时请求结果 > 手动测试"且零流量端点不被伪 healthy 覆盖）；未运行时按库内 test_status 回退。
-#[tauri::command]
 pub fn get_endpoint_health(state: State<AppState>) -> AppResult<Vec<EndpointHealthInfo>> {
     let conn = state.db_pool.get()?;
     let enabled = endpoint_repo::list_enabled(&conn)?;

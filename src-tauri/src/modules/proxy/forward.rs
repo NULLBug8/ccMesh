@@ -36,6 +36,7 @@ use crate::modules::transform::thinking_rectifier::{
 };
 use crate::modules::transform::transformer::{get_transformer, UpstreamFormat};
 use crate::modules::usage;
+use crate::runtime::AppHandle;
 use crate::utils::ua;
 
 const MAX_ERROR_BODY_BYTES: usize = 4096;
@@ -83,7 +84,7 @@ impl ActiveRequests {
 
 /// 代理运行期共享状态，注入 axum 处理器。
 pub struct ProxyState {
-    pub app: tauri::AppHandle,
+    pub app: AppHandle,
     pub db_pool: DbPool,
     pub client: reqwest::Client,
     /// 全局代理 client（配置了 proxy_url 时构建；端点 use_proxy 为真时使用）。

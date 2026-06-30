@@ -4,7 +4,6 @@ import { cn } from "@/lib/utils";
 import { useLayoutStore, type ViewId } from "@/stores";
 import { TopNav } from "./TopNav";
 import { SideNav } from "./SideNav";
-import { TitleBar } from "./TitleBar";
 
 // 6 个页面懒加载，各自拆为独立 chunk，仅在切换到对应视图时加载
 const Dashboard = lazy(() =>
@@ -13,9 +12,6 @@ const Dashboard = lazy(() =>
 const Endpoints = lazy(() =>
   import("@/pages/Endpoints").then((m) => ({ default: m.Endpoints })),
 );
-const ConfigProfiles = lazy(() =>
-  import("@/pages/ConfigProfiles").then((m) => ({ default: m.ConfigProfiles })),
-);
 const Balances = lazy(() =>
   import("@/pages/Balances").then((m) => ({ default: m.Balances })),
 );
@@ -23,7 +19,6 @@ const Rules = lazy(() => import("@/pages/Rules").then((m) => ({ default: m.Rules
 const Statistics = lazy(() =>
   import("@/pages/Statistics").then((m) => ({ default: m.Statistics })),
 );
-const Sync = lazy(() => import("@/pages/Sync").then((m) => ({ default: m.Sync })));
 const Logs = lazy(() => import("@/pages/Logs").then((m) => ({ default: m.Logs })));
 const Settings = lazy(() =>
   import("@/pages/Settings").then((m) => ({ default: m.Settings })),
@@ -32,11 +27,9 @@ const Settings = lazy(() =>
 const PAGES: Record<ViewId, ComponentType> = {
   dashboard: Dashboard,
   endpoints: Endpoints,
-  configProfiles: ConfigProfiles,
   balances: Balances,
   rules: Rules,
   statistics: Statistics,
-  sync: Sync,
   logs: Logs,
   settings: Settings,
 };
@@ -61,7 +54,6 @@ export function AppLayout() {
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
-      <TitleBar />
       <div
         className={cn(
           "flex flex-1 overflow-hidden",

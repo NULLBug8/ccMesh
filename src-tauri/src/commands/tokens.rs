@@ -11,7 +11,6 @@ pub struct TokenCount {
 }
 
 /// 估算请求输入 token（供 `/v1/messages/count_tokens` 与前端工具使用）。
-#[tauri::command]
 pub fn count_tokens(request: Value) -> AppResult<TokenCount> {
     let system = request.get("system");
     let messages = request

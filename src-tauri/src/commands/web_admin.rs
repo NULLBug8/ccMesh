@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::convert::Infallible;
 
-use axum::extract::State;
+use axum::extract::State as AxumState;
 use axum::http::{HeaderValue, StatusCode};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
@@ -9,20 +9,14 @@ use axum::Json;
 use futures::stream::Stream;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tauri::{AppHandle, Manager};
+use crate::runtime::{AppHandle, State};
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt;
 
-use crate::commands::{
-    backup, config, endpoint, health, logs, models, proxy, rules, stats, tokens, tool_config,
-    update, usage, webdav, window,
-};
+use crate::commands::{config, endpoint, health, logs, models, proxy, rules, stats, tokens};
 use crate::error::{AppError, AppResult};
-use crate::models::backup::ImportSummary;
-use crate::models::config::WebDavConfig;
 use crate::models::endpoint::{CreateEndpointRequest, UpdateEndpointRequest};
 use crate::models::rules::RulesConfig;
-use crate::models::tool_config::{ClaudeOperationFields, CodexOperationFields, SaveChannelRequest};
 use crate::state::AppState;
 
 #[derive(Deserialize)]
@@ -180,125 +174,6 @@ struct CountTokensArgs {
     request: Value,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct UsageFilterArgs {
-    start: Option<String>,
-    end: Option<String>,
-    #[serde(alias = "app_type")]
-    app_type: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct TestWebDavArgs {
-    config: WebDavConfig,
-}
-
-#[derive(Deserialize)]
-struct VersionArg {
-    version: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct UpdateSettingsArgs {
-    #[serde(alias = "auto_check")]
-    auto_check: Option<bool>,
-    #[serde(alias = "check_interval")]
-    check_interval: Option<i64>,
-}
-
-#[derive(Deserialize)]
-struct ExportConfigArgs {
-    path: String,
-}
-
-#[derive(Deserialize)]
-struct ImportConfigArgs {
-    path: String,
-    strategy: String,
-}
-
-#[derive(Deserialize)]
-struct WebDavRestoreArgs {
-    filename: String,
-    strategy: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct FilenameArg {
-    filename: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ToolConfigAppTypeArg {
-    app_type: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ToolConfigGetArg {
-    app_type: String,
-    id: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ToolConfigSaveArg {
-    app_type: String,
-    req: SaveChannelRequest,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ToolConfigDeleteArg {
-    app_type: String,
-    id: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ToolConfigApplyArg {
-    app_type: String,
-    snapshot: Value,
-}
-
-#[derive(Deserialize)]
-struct PreviewClaudeArgs {
-    base: Value,
-    fields: ClaudeOperationFields,
-}
-
-#[derive(Deserialize)]
-struct ParseClaudeArgs {
-    snapshot: Value,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PreviewCodexArgs {
-    #[serde(alias = "config_toml")]
-    config_toml: String,
-    fields: CodexOperationFields,
-    #[serde(alias = "goal_mode")]
-    goal_mode: Option<bool>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ParseCodexArgs {
-    auth: Value,
-    #[serde(alias = "config_toml")]
-    config_toml: String,
-}
-
-#[derive(Deserialize)]
-struct WindowActionArg {
-    action: String,
-}
-
 fn to_json<T: Serialize>(value: T) -> AppResult<Value> {
     serde_json::to_value(value).map_err(AppError::from)
 }
@@ -312,12 +187,12 @@ fn json_error(status: StatusCode, error: AppError) -> Response {
     (status, Json(json!({ "error": error.to_string() }))).into_response()
 }
 
-fn app_state(app: &AppHandle) -> tauri::State<'_, AppState> {
-    app.state::<AppState>()
+fn app_state(app: &AppHandle) -> State<'_, AppState> {
+    app.state()
 }
 
 pub async fn invoke_http(
-    State(proxy_state): State<std::sync::Arc<crate::modules::proxy::forward::ProxyState>>,
+    AxumState(proxy_state): AxumState<std::sync::Arc<crate::modules::proxy::forward::ProxyState>>,
     Json(body): Json<InvokeRequest>,
 ) -> Response {
     let app = proxy_state.app.clone();
@@ -498,164 +373,6 @@ pub async fn invoke_http(
                 let args: CountTokensArgs = parse_args(body.args)?;
                 to_json(tokens::count_tokens(args.request)?)
             }
-            "sync_session_usage" => to_json(usage::sync_session_usage(state.clone()).await?),
-            "get_usage_summary" => {
-                let args: UsageFilterArgs = parse_args(body.args)?;
-                to_json(usage::get_usage_summary(
-                    state.clone(),
-                    args.start,
-                    args.end,
-                    args.app_type,
-                )?)
-            }
-            "get_usage_by_day_model" => {
-                let args: UsageFilterArgs = parse_args(body.args)?;
-                to_json(usage::get_usage_by_day_model(
-                    state.clone(),
-                    args.start,
-                    args.end,
-                    args.app_type,
-                )?)
-            }
-            "test_webdav" => {
-                let args: TestWebDavArgs = parse_args(body.args)?;
-                to_json(webdav::test_webdav(args.config).await?)
-            }
-            "webdav_backup" => to_json(webdav::webdav_backup(state.clone()).await?),
-            "webdav_restore" => {
-                let args: WebDavRestoreArgs = parse_args(body.args)?;
-                webdav::webdav_restore(state.clone(), args.filename, args.strategy).await?;
-                to_json(())
-            }
-            "webdav_list_backups" => to_json(webdav::webdav_list_backups(state.clone()).await?),
-            "webdav_delete_backup" => {
-                let args: FilenameArg = parse_args(body.args)?;
-                webdav::webdav_delete_backup(state.clone(), args.filename).await?;
-                to_json(())
-            }
-            "check_for_updates" => {
-                to_json(update::check_for_updates(app.clone(), state.clone()).await?)
-            }
-            "download_and_install" => {
-                update::download_and_install(app.clone(), state.clone()).await?;
-                to_json(())
-            }
-            "get_update_settings" => to_json(update::get_update_settings(state.clone())?),
-            "set_update_settings" => {
-                let args: UpdateSettingsArgs = parse_args(body.args)?;
-                let auto_check = args
-                    .auto_check
-                    .ok_or_else(|| AppError::InvalidArgument("缺少 autoCheck".into()))?;
-                let check_interval = args
-                    .check_interval
-                    .ok_or_else(|| AppError::InvalidArgument("缺少 checkInterval".into()))?;
-                update::set_update_settings(state.clone(), auto_check, check_interval)?;
-                to_json(())
-            }
-            "skip_version" => {
-                let args: VersionArg = parse_args(body.args)?;
-                update::skip_version(state.clone(), args.version)?;
-                to_json(())
-            }
-            "export_config" => {
-                let args: ExportConfigArgs = parse_args(body.args)?;
-                backup::export_config(state.clone(), args.path)?;
-                to_json(())
-            }
-            "import_config" => {
-                let args: ImportConfigArgs = parse_args(body.args)?;
-                let summary: ImportSummary =
-                    backup::import_config(state.clone(), args.path, args.strategy)?;
-                to_json(summary)
-            }
-            "list_profile_channels" => {
-                let args: ToolConfigAppTypeArg = parse_args(body.args)?;
-                to_json(tool_config::list_profile_channels(
-                    app.clone(),
-                    args.app_type,
-                )?)
-            }
-            "get_profile_channel" => {
-                let args: ToolConfigGetArg = parse_args(body.args)?;
-                to_json(tool_config::get_profile_channel(
-                    app.clone(),
-                    args.app_type,
-                    args.id,
-                )?)
-            }
-            "save_profile_channel" => {
-                let args: ToolConfigSaveArg = parse_args(body.args)?;
-                to_json(tool_config::save_profile_channel(
-                    app.clone(),
-                    args.app_type,
-                    args.req,
-                )?)
-            }
-            "delete_profile_channel" => {
-                let args: ToolConfigDeleteArg = parse_args(body.args)?;
-                tool_config::delete_profile_channel(app.clone(), args.app_type, args.id)?;
-                to_json(())
-            }
-            "extract_source_record" => {
-                let args: ToolConfigAppTypeArg = parse_args(body.args)?;
-                to_json(tool_config::extract_source_record(
-                    app.clone(),
-                    args.app_type,
-                )?)
-            }
-            "apply_profile_config" => {
-                let args: ToolConfigApplyArg = parse_args(body.args)?;
-                tool_config::apply_profile_config(app.clone(), args.app_type, args.snapshot)?;
-                to_json(())
-            }
-            "preview_claude_settings" => {
-                let args: PreviewClaudeArgs = parse_args(body.args)?;
-                to_json(tool_config::preview_claude_settings(
-                    args.base,
-                    args.fields,
-                )?)
-            }
-            "parse_claude_fields" => {
-                let args: ParseClaudeArgs = parse_args(body.args)?;
-                to_json(tool_config::parse_claude_fields(args.snapshot)?)
-            }
-            "preview_codex_config" => {
-                let args: PreviewCodexArgs = parse_args(body.args)?;
-                to_json(tool_config::preview_codex_config(
-                    args.config_toml,
-                    args.fields,
-                    args.goal_mode,
-                )?)
-            }
-            "parse_codex_fields" => {
-                let args: ParseCodexArgs = parse_args(body.args)?;
-                to_json(tool_config::parse_codex_fields(
-                    args.auth,
-                    args.config_toml,
-                )?)
-            }
-            "set_language" => {
-                let args: HashMap<String, String> = parse_args(body.args)?;
-                let lang = args
-                    .get("lang")
-                    .cloned()
-                    .ok_or_else(|| AppError::InvalidArgument("缺少 lang".into()))?;
-                window::set_language(app.clone(), state.clone(), lang)?;
-                to_json(())
-            }
-            "apply_close_action" => {
-                let args: WindowActionArg = parse_args(body.args)?;
-                window::apply_close_action(app.clone(), args.action)?;
-                to_json(())
-            }
-            "hide_to_tray" => {
-                window::hide_to_tray(app.clone())?;
-                to_json(())
-            }
-            "notify_window_shown" => {
-                window::notify_window_shown(app.clone());
-                to_json(())
-            }
             command => Err(AppError::NotFound(format!("未知命令: {command}"))),
         }
     }
@@ -668,7 +385,7 @@ pub async fn invoke_http(
 }
 
 pub async fn events_sse(
-    State(_proxy_state): State<std::sync::Arc<crate::modules::proxy::forward::ProxyState>>,
+    AxumState(_proxy_state): AxumState<std::sync::Arc<crate::modules::proxy::forward::ProxyState>>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let receiver = crate::modules::web_admin::bridge::subscribe();
     let stream = BroadcastStream::new(receiver).filter_map(|message| match message {
@@ -687,26 +404,26 @@ pub async fn events_sse(
 }
 
 pub async fn static_asset_root(
-    State(proxy_state): State<std::sync::Arc<crate::modules::proxy::forward::ProxyState>>,
+    AxumState(proxy_state): AxumState<std::sync::Arc<crate::modules::proxy::forward::ProxyState>>,
 ) -> Response {
     serve_static_asset(&proxy_state, "").await
 }
 
 pub async fn static_asset_favicon(
-    State(proxy_state): State<std::sync::Arc<crate::modules::proxy::forward::ProxyState>>,
+    AxumState(proxy_state): AxumState<std::sync::Arc<crate::modules::proxy::forward::ProxyState>>,
 ) -> Response {
     serve_static_asset(&proxy_state, "favicon.ico").await
 }
 
 pub async fn static_asset_root_assets(
-    State(proxy_state): State<std::sync::Arc<crate::modules::proxy::forward::ProxyState>>,
+    AxumState(proxy_state): AxumState<std::sync::Arc<crate::modules::proxy::forward::ProxyState>>,
     axum::extract::Path(path): axum::extract::Path<String>,
 ) -> Response {
     serve_static_asset(&proxy_state, &format!("assets/{path}")).await
 }
 
 pub async fn static_asset(
-    State(proxy_state): State<std::sync::Arc<crate::modules::proxy::forward::ProxyState>>,
+    AxumState(proxy_state): AxumState<std::sync::Arc<crate::modules::proxy::forward::ProxyState>>,
     axum::extract::Path(path): axum::extract::Path<String>,
 ) -> Response {
     serve_static_asset(&proxy_state, &path).await

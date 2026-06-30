@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+﻿import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Settings } from "@/pages/Settings";
@@ -15,45 +15,21 @@ vi.mock("@tanstack/react-query", () => ({
           autoLightStart: "07:00",
           autoDarkStart: "19:00",
           language: "zh",
-          closeWindowBehavior: "ask",
           logLevel: "info",
-          silentStart: false,
-          autoRun: true,
           proxyEnabled: false,
           proxyUrl: "",
-          proxyForUpdate: false,
           openaiUa: "",
           claudeCliUa: "",
+          globalTestModel: "",
         },
       };
     }
-
-    return {
-      data: false,
-      isLoading: false,
-    };
+    return { data: false, isLoading: false };
   },
-  useQueryClient: () => ({
-    invalidateQueries: vi.fn(),
-  }),
+  useQueryClient: () => ({ invalidateQueries: vi.fn() }),
 }));
 
-vi.mock("next-themes", () => ({
-  useTheme: () => ({
-    setTheme: vi.fn(),
-  }),
-}));
-
-vi.mock("@tauri-apps/plugin-autostart", () => ({
-  disable: vi.fn(),
-  enable: vi.fn(),
-  isEnabled: vi.fn().mockResolvedValue(false),
-}));
-
-vi.mock("@/pages/Settings/_components/UpdateSection", () => ({
-  UpdateSection: () => <div>update-section</div>,
-}));
-
+vi.mock("next-themes", () => ({ useTheme: () => ({ setTheme: vi.fn() }) }));
 vi.mock("@/pages/Settings/_components/TokenCounter", () => ({
   TokenCounter: () => <div>token-counter</div>,
 }));
@@ -61,19 +37,15 @@ vi.mock("@/pages/Settings/_components/TokenCounter", () => ({
 describe("Settings layout", () => {
   beforeEach(() => {
     usePageLayoutStore.setState({
-      editModeByView: {
-        settings: true,
-      },
+      editModeByView: { settings: true },
       layoutByView: {
         settings: {
           mode: "stack",
           sections: [
             { id: "header", visible: true },
             { id: "general", visible: true },
-            { id: "startup", visible: false },
             { id: "proxy", visible: false },
             { id: "advanced", visible: false },
-            { id: "update", visible: false },
             { id: "tokens", visible: false },
           ],
         },
@@ -83,9 +55,7 @@ describe("Settings layout", () => {
 
   it("uses the shared layout editor and hides disabled sections", () => {
     render(<Settings />);
-
     expect(screen.getByText("布局编辑")).toBeInTheDocument();
-    expect(screen.queryByText("update-section")).not.toBeInTheDocument();
     expect(screen.queryByText("token-counter")).not.toBeInTheDocument();
   });
 });

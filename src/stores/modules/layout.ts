@@ -7,11 +7,9 @@ export type EndpointView = "list" | "grid";
 export type ViewId =
   | "dashboard"
   | "endpoints"
-  | "configProfiles"
   | "balances"
   | "rules"
   | "statistics"
-  | "sync"
   | "logs"
   | "settings";
 export type Lang = "zh" | "en";

@@ -1,4 +1,4 @@
-import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
+﻿import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 
 import { TabularText } from "@/components/ui";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,6 @@ interface PaginationProps {
   onPageChange: (page: number) => void;
 }
 
-/** 受控分页：上一页/下一页 + 页码信息。 */
 export function Pagination({ page, pageSize, total, onPageChange }: PaginationProps) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   return (

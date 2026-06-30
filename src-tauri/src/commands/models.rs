@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use chrono::Utc;
 use serde_json::{json, Value};
-use tauri::State;
+use crate::runtime::State;
 
 use crate::error::AppResult;
 use crate::modules::models_cache::fetch_models_with_ua;
@@ -12,7 +12,6 @@ use crate::modules::storage::{config_repo, endpoint_repo};
 use crate::state::AppState;
 
 /// 模型列表（命中缓存直接返回；`force_refresh` 或过期则按启用端点拉取后缓存）。
-#[tauri::command]
 pub async fn get_models(
     state: State<'_, AppState>,
     force_refresh: Option<bool>,
@@ -78,7 +77,6 @@ pub async fn get_models(
 /// 拉取指定上游端点的可用模型 id 列表（供端点表单「刷新」按钮；端点可能尚未保存，故按字段传参）。
 /// 走鉴权聚合 + URL 候选探测策略，提高未知协议端点的成功率。
 /// 代理决策：表单的 use_proxy 或全局 proxyEnabled（且地址非空）。
-#[tauri::command]
 pub async fn fetch_endpoint_models(
     state: State<'_, AppState>,
     api_url: String,

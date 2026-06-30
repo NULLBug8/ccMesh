@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Emitter, State};
+use crate::runtime::{AppHandle, State};
 
 use crate::commands::proxy::{build_status, PROXY_STATUS_EVENT};
 use crate::error::AppResult;
@@ -19,13 +19,11 @@ fn normalize_rules_config(mut config: RulesConfig) -> RulesConfig {
     config
 }
 
-#[tauri::command]
 pub fn get_rules_config(state: State<'_, AppState>) -> AppResult<RulesConfig> {
     let conn = state.db_pool.get()?;
     Ok(normalize_rules_config(config_repo::get_config(&conn)?.rules))
 }
 
-#[tauri::command]
 pub async fn set_rules_config(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -37,7 +35,6 @@ pub async fn set_rules_config(
     Ok(config)
 }
 
-#[tauri::command]
 pub async fn reset_rules_config(
     app: AppHandle,
     state: State<'_, AppState>,

@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Emitter, State};
+use crate::runtime::{AppHandle, State};
 
 use crate::error::{AppError, AppResult};
 use crate::models::config::AppConfig;
@@ -55,7 +55,6 @@ fn emit_status(app: &AppHandle, status: &ProxyStatus) {
     crate::modules::web_admin::bridge::emit(PROXY_STATUS_EVENT, status);
 }
 
-#[tauri::command]
 pub async fn start_proxy(app: AppHandle, state: State<'_, AppState>) -> AppResult<ProxyStatus> {
     {
         // 已运行则直接返回当前状态（不重复绑定端口）
@@ -74,7 +73,6 @@ pub async fn start_proxy(app: AppHandle, state: State<'_, AppState>) -> AppResul
     Ok(status)
 }
 
-#[tauri::command]
 pub async fn stop_proxy(app: AppHandle, state: State<'_, AppState>) -> AppResult<ProxyStatus> {
     let handle = { state.proxy.lock().unwrap().take() };
     if let Some(h) = handle {
@@ -85,12 +83,10 @@ pub async fn stop_proxy(app: AppHandle, state: State<'_, AppState>) -> AppResult
     Ok(status)
 }
 
-#[tauri::command]
 pub fn get_proxy_status(state: State<'_, AppState>) -> AppResult<ProxyStatus> {
     Ok(build_status(&state))
 }
 
-#[tauri::command]
 pub fn switch_endpoint(
     app: AppHandle,
     state: State<'_, AppState>,

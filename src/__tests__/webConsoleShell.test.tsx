@@ -1,6 +1,6 @@
-import type { ReactNode } from "react";
+﻿import type { ReactNode } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppLayout } from "@/layouts/AppLayout";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -17,46 +17,13 @@ vi.mock("@/components/common", () => ({
   LangToggle: () => <button type="button">Lang</button>,
 }));
 
-vi.mock("@/components/business", () => ({
-  UpdateBadge: () => <span data-testid="update-badge" />,
-  VersionPopover: () => <span data-testid="version-popover" />,
-}));
-
-vi.mock("@/pages/Dashboard", () => ({
-  Dashboard: () => <div>Dashboard page</div>,
-}));
-
-vi.mock("@/pages/Endpoints", () => ({
-  Endpoints: () => <div>Endpoints page</div>,
-}));
-
-vi.mock("@/pages/ConfigProfiles", () => ({
-  ConfigProfiles: () => <div>Config Profiles page</div>,
-}));
-
-vi.mock("@/pages/Rules", () => ({
-  Rules: () => <div>Rules page</div>,
-}));
-
-vi.mock("@/pages/Balances", () => ({
-  Balances: () => <div>Balances page</div>,
-}));
-
-vi.mock("@/pages/Statistics", () => ({
-  Statistics: () => <div>Statistics page</div>,
-}));
-
-vi.mock("@/pages/Sync", () => ({
-  Sync: () => <div>Sync page</div>,
-}));
-
-vi.mock("@/pages/Logs", () => ({
-  Logs: () => <div>Logs page</div>,
-}));
-
-vi.mock("@/pages/Settings", () => ({
-  Settings: () => <div>Settings page</div>,
-}));
+vi.mock("@/pages/Dashboard", () => ({ Dashboard: () => <div>Dashboard page</div> }));
+vi.mock("@/pages/Endpoints", () => ({ Endpoints: () => <div>Endpoints page</div> }));
+vi.mock("@/pages/Rules", () => ({ Rules: () => <div>Rules page</div> }));
+vi.mock("@/pages/Balances", () => ({ Balances: () => <div>Balances page</div> }));
+vi.mock("@/pages/Statistics", () => ({ Statistics: () => <div>Statistics page</div> }));
+vi.mock("@/pages/Logs", () => ({ Logs: () => <div>Logs page</div> }));
+vi.mock("@/pages/Settings", () => ({ Settings: () => <div>Settings page</div> }));
 
 describe("web console shell", () => {
   window.matchMedia =
@@ -81,16 +48,9 @@ describe("web console shell", () => {
       lang: "en",
       endpointView: "list",
     });
-    usePageLayoutStore.setState({
-      editModeByView: {},
-      layoutByView: {},
-    });
+    usePageLayoutStore.setState({ editModeByView: {}, layoutByView: {} });
     localStorage.clear();
     window.__CCMESH_WEB__ = true;
-  });
-
-  afterEach(() => {
-    delete window.__CCMESH_WEB__;
   });
 
   function renderShell() {
@@ -101,16 +61,15 @@ describe("web console shell", () => {
     );
   }
 
-  it("hides desktop-only window controls in web mode", async () => {
+  it("renders the web-only shell", async () => {
     renderShell();
-    expect(screen.getByText("ccMesh Web")).toBeInTheDocument();
+    expect(screen.getByTestId("logo-full")).toBeInTheDocument();
     expect(screen.queryByLabelText("最小化")).not.toBeInTheDocument();
     expect(await screen.findByText("Dashboard page")).toBeInTheDocument();
   });
 
-  it("switches between menu pages in web mode", async () => {
+  it("switches between retained web menu pages", async () => {
     renderShell();
-
     expect(await screen.findByText("Dashboard page")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Rules" }));

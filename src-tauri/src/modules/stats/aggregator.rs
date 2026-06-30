@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use tauri::{AppHandle, Emitter};
+use crate::runtime::AppHandle;
 
 use crate::error::AppResult;
 use crate::models::stats::{RequestLog, RequestTrace, StatsOverview, TrendCompare};
@@ -65,7 +65,7 @@ impl StatsAggregator {
         });
 
         let weak = Arc::downgrade(&aggregator);
-        tauri::async_runtime::spawn(async move {
+        tokio::spawn(async move {
             let mut tick = tokio::time::interval(FLUSH_INTERVAL);
             tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {

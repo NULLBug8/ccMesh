@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter, State};
+use crate::runtime::{AppHandle, State};
 
 use crate::error::{AppError, AppResult};
 use crate::models::endpoint::{
@@ -30,19 +30,16 @@ fn emit_endpoints_changed(app: &AppHandle) {
     crate::modules::web_admin::bridge::emit(ENDPOINTS_CHANGED_EVENT, &());
 }
 
-#[tauri::command]
 pub fn list_endpoints(state: State<AppState>) -> AppResult<Vec<Endpoint>> {
     let conn = state.db_pool.get()?;
     endpoint_repo::list_all(&conn)
 }
 
-#[tauri::command]
 pub fn create_endpoint(state: State<AppState>, req: CreateEndpointRequest) -> AppResult<Endpoint> {
     let conn = state.db_pool.get()?;
     endpoint_repo::create(&conn, &req)
 }
 
-#[tauri::command]
 pub fn update_endpoint(
     app: AppHandle,
     state: State<AppState>,
@@ -55,13 +52,11 @@ pub fn update_endpoint(
     Ok(ep)
 }
 
-#[tauri::command]
 pub fn delete_endpoint(state: State<AppState>, id: i64) -> AppResult<()> {
     let conn = state.db_pool.get()?;
     endpoint_repo::delete(&conn, id)
 }
 
-#[tauri::command]
 pub fn reorder_endpoints(
     app: AppHandle,
     state: State<AppState>,
@@ -74,7 +69,6 @@ pub fn reorder_endpoints(
 }
 
 /// 克隆端点：名称自动加 `(副本)` 后缀并避免冲突。
-#[tauri::command]
 pub fn clone_endpoint(state: State<AppState>, id: i64) -> AppResult<Endpoint> {
     let conn = state.db_pool.get()?;
     let src = endpoint_repo::get_by_id(&conn, id)?
@@ -1099,7 +1093,6 @@ fn newapi_like_balance_config(path: &str, balance_path: &str) -> BalanceQueryCon
     }
 }
 
-#[tauri::command]
 pub async fn query_endpoint_balance(
     state: State<'_, AppState>,
     id: i64,
@@ -1116,7 +1109,6 @@ pub async fn query_endpoint_balance(
     query_endpoint_balance_with_config(state, ep, cfg).await
 }
 
-#[tauri::command]
 pub async fn test_endpoint_balance_query(
     state: State<'_, AppState>,
     id: i64,
@@ -1151,7 +1143,6 @@ async fn query_endpoint_balance_with_config(
 }
 
 /// 探测端点连通性：发送最小请求，200 即可用；持久化 test_status。
-#[tauri::command]
 pub async fn probe_endpoint_balance_templates(
     state: State<'_, AppState>,
     id: i64,
@@ -1235,7 +1226,6 @@ pub async fn probe_endpoint_balance_templates(
     Ok(classify_balance_probe_results(results))
 }
 
-#[tauri::command]
 pub async fn generate_balance_template_with_ai(
     state: State<'_, AppState>,
     id: i64,
@@ -1840,7 +1830,6 @@ fn record_endpoint_test_log(
     });
 }
 
-#[tauri::command]
 pub async fn test_endpoint(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -2103,7 +2092,6 @@ pub async fn test_endpoint(
 }
 
 /// 代理连通性检测目标：轻量 204 连通性 URL（经代理 GET，验证代理能出网）。
-#[tauri::command]
 pub async fn test_all_endpoints(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -2140,7 +2128,6 @@ pub async fn test_all_endpoints(
 const PROXY_TEST_URL: &str = "https://www.gstatic.com/generate_204";
 
 /// 测试代理连通性：严格经给定代理地址访问连通性 URL（地址无效直接报错，不回落直连以免误判）。
-#[tauri::command]
 pub async fn test_proxy(url: String) -> AppResult<TestResult> {
     let url = url.trim();
     if url.is_empty() {

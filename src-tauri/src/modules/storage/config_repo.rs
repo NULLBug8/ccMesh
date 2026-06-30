@@ -4,10 +4,9 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::de::DeserializeOwned;
 
 use crate::error::AppResult;
-use crate::models::config::{AppConfig, UpdateSettings, WebDavConfig};
+use crate::models::config::AppConfig;
 use crate::models::rules::RulesConfig;
 
-/// 可跨设备同步的安全配置键白名单（剔除设备/路径特定项，见 P5-4）。
 pub const SAFE_CONFIG_KEYS: &[&str] = &[
     "port",
     "logLevel",
@@ -16,17 +15,10 @@ pub const SAFE_CONFIG_KEYS: &[&str] = &[
     "themeAuto",
     "autoLightStart",
     "autoDarkStart",
-    "closeWindowBehavior",
-    "silentStart",
     "autoRun",
     "modelsCacheTtl",
-    "webdav_url",
-    "webdav_username",
-    "webdav_password",
-    "webdav_configPath",
-    "webdav_statsPath",
-    "update_autoCheck",
-    "update_checkInterval",
+    "proxyUrl",
+    "proxyEnabled",
     "openaiUa",
     "claudeCliUa",
     "globalTestModel",
@@ -35,9 +27,7 @@ pub const SAFE_CONFIG_KEYS: &[&str] = &[
 
 pub fn get_value(conn: &Connection, key: &str) -> AppResult<Option<String>> {
     Ok(conn
-        .query_row("SELECT value FROM app_config WHERE key = ?1", [key], |r| {
-            r.get(0)
-        })
+        .query_row("SELECT value FROM app_config WHERE key = ?1", [key], |r| r.get(0))
         .optional()?)
 }
 
@@ -62,19 +52,20 @@ pub fn get_all(conn: &Connection) -> AppResult<BTreeMap<String, String>> {
 }
 
 fn parse_bool(m: &BTreeMap<String, String>, key: &str, default: bool) -> bool {
-    m.get(key)
-        .map(|v| v == "true" || v == "1")
-        .unwrap_or(default)
+    m.get(key).map(|v| v == "true" || v == "1").unwrap_or(default)
 }
+
 fn parse_str(m: &BTreeMap<String, String>, key: &str, default: &str) -> String {
     m.get(key)
         .filter(|v| !v.is_empty())
         .cloned()
         .unwrap_or_else(|| default.to_string())
 }
+
 fn parse_str_allow_empty(m: &BTreeMap<String, String>, key: &str, default: &str) -> String {
     m.get(key).cloned().unwrap_or_else(|| default.to_string())
 }
+
 fn parse_i64(m: &BTreeMap<String, String>, key: &str, default: i64) -> i64 {
     m.get(key).and_then(|v| v.parse().ok()).unwrap_or(default)
 }
@@ -85,7 +76,6 @@ fn parse_json<T: DeserializeOwned + Default>(m: &BTreeMap<String, String>, key: 
         .unwrap_or_default()
 }
 
-/// 组装强类型 `AppConfig`（缺省回落默认值）。
 pub fn get_config(conn: &Connection) -> AppResult<AppConfig> {
     let m = get_all(conn)?;
     let d = AppConfig::default();
@@ -97,29 +87,13 @@ pub fn get_config(conn: &Connection) -> AppResult<AppConfig> {
         theme_auto: parse_bool(&m, "themeAuto", d.theme_auto),
         auto_light_start: parse_str(&m, "autoLightStart", &d.auto_light_start),
         auto_dark_start: parse_str(&m, "autoDarkStart", &d.auto_dark_start),
-        close_window_behavior: parse_str(&m, "closeWindowBehavior", &d.close_window_behavior),
-        silent_start: parse_bool(&m, "silentStart", d.silent_start),
         auto_run: parse_bool(&m, "autoRun", d.auto_run),
         models_cache_ttl: parse_i64(&m, "modelsCacheTtl", d.models_cache_ttl),
         proxy_url: parse_str(&m, "proxyUrl", &d.proxy_url),
         proxy_enabled: parse_bool(&m, "proxyEnabled", d.proxy_enabled),
-        proxy_for_update: parse_bool(&m, "proxyForUpdate", d.proxy_for_update),
         openai_ua: parse_str_allow_empty(&m, "openaiUa", &d.openai_ua),
         claude_cli_ua: parse_str_allow_empty(&m, "claudeCliUa", &d.claude_cli_ua),
         global_test_model: parse_str_allow_empty(&m, "globalTestModel", &d.global_test_model),
-        update: UpdateSettings {
-            auto_check: parse_bool(&m, "update_autoCheck", true),
-            check_interval: parse_i64(&m, "update_checkInterval", 24),
-            skipped_version: parse_str(&m, "update_skippedVersion", ""),
-            last_check_time: parse_str(&m, "update_lastCheckTime", ""),
-        },
-        webdav: WebDavConfig {
-            url: parse_str(&m, "webdav_url", ""),
-            username: parse_str(&m, "webdav_username", ""),
-            password: parse_str(&m, "webdav_password", ""),
-            config_path: parse_str(&m, "webdav_configPath", ""),
-            stats_path: parse_str(&m, "webdav_statsPath", ""),
-        },
         rules: parse_json::<RulesConfig>(&m, "rulesConfig"),
     })
 }
@@ -147,13 +121,10 @@ mod tests {
         let c = db();
         // 默认：静默关、自动运行开（与 AppConfig::default 一致）
         let cfg = get_config(&c).unwrap();
-        assert!(!cfg.silent_start);
         assert!(cfg.auto_run);
         // 写入后正确回读（沿用 parse_bool 的 "true"/"false"）
-        set_value(&c, "silentStart", "true").unwrap();
         set_value(&c, "autoRun", "false").unwrap();
         let cfg = get_config(&c).unwrap();
-        assert!(cfg.silent_start);
         assert!(!cfg.auto_run);
     }
 

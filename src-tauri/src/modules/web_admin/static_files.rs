@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::error::AppResult;
-use tauri::{AppHandle, Manager};
+use crate::runtime::AppHandle;
 
 fn workspace_root() -> Option<PathBuf> {
     std::env::current_dir().ok()

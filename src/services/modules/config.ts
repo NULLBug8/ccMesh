@@ -1,20 +1,5 @@
-import { request } from "../request";
+﻿import { request } from "../request";
 import type { RulesConfig } from "./rules";
-
-export interface UpdateSettings {
-  autoCheck: boolean;
-  checkInterval: number;
-  skippedVersion: string;
-  lastCheckTime: string;
-}
-
-export interface WebDavConfig {
-  url: string;
-  username: string;
-  password: string;
-  configPath: string;
-  statsPath: string;
-}
 
 export interface AppConfig {
   port: number;
@@ -24,18 +9,13 @@ export interface AppConfig {
   themeAuto: boolean;
   autoLightStart: string;
   autoDarkStart: string;
-  closeWindowBehavior: string;
-  silentStart: boolean;
   autoRun: boolean;
   modelsCacheTtl: number;
   proxyUrl: string;
   proxyEnabled: boolean;
-  proxyForUpdate: boolean;
   openaiUa: string;
   claudeCliUa: string;
   globalTestModel: string;
-  update: UpdateSettings;
-  webdav: WebDavConfig;
   rules: RulesConfig;
 }
 
@@ -48,9 +28,8 @@ export interface ProxyTestResult {
 
 export const configApi = {
   getConfig: () => request<AppConfig>("get_config"),
-  /** 部分更新：键为扁平配置键（如 port / theme / webdav_url / update_autoCheck），值为字符串。 */
-  setConfig: (patch: Record<string, string>) =>
-    request<AppConfig>("set_config", { patch }),
-  /** 经给定代理地址做一次连通性检测。 */
+  /** 部分更新：键为扁平配置键（如 port / theme / proxyUrl），值为字符串。 */
+  setConfig: (patch: Record<string, string>) => request<AppConfig>("set_config", { patch }),
+  /** 使用给定代理地址做一次连通性测试。 */
   testProxy: (url: string) => request<ProxyTestResult>("test_proxy", { url }),
 };

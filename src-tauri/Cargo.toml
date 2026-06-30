@@ -1,7 +1,7 @@
 [package]
 name = "ccmesh"
 version = "0.1.7"
-description = "A Tauri App"
+description = "ccMesh web backend"
 authors = ["you"]
 edition = "2021"
 
@@ -12,13 +12,9 @@ edition = "2021"
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "ccmesh_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
-
-[build-dependencies]
-tauri-build = { version = "2", features = [] }
+crate-type = ["rlib"]
 
 [dependencies]
-tauri = { version = "2", features = ["image-png", "tray-icon"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
@@ -31,7 +27,6 @@ axum = "0.8.9"
 hyper = "1.10.1"
 tower = "0.5.3"
 tower-http = "0.6.11"
-reqwest_dav = "0.3.3"
 futures = "0.3.32"
 async-trait = "0.1.89"
 tokio = { version = "1.52.3", features = ["full"] }
@@ -42,14 +37,3 @@ uuid = { version = "1.23.2", features = ["v4"] }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 tokio-util = "0.7.18"
 tokio-stream = { version = "0.1.18", features = ["sync"] }
-tauri-plugin-updater = "2.10.1"
-tauri-plugin-process = "2.3.1"
-tauri-plugin-dialog = "2.7.1"
-tauri-plugin-opener = "2"
-
-[target.'cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))'.dependencies]
-tauri-plugin-single-instance = "2"
-
-[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
-tauri-plugin-autostart = "2"
-

@@ -1,8 +1,7 @@
-import { PanelLeftIcon, PanelsTopLeftIcon } from "lucide-react";
+﻿import { PanelLeftIcon, PanelsTopLeftIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ThemeToggle, Logo, LangToggle } from "@/components/common";
-import { VersionPopover } from "@/components/business";
 import { useLayoutStore, usePageLayoutStore } from "@/stores";
 import { NavItem } from "./NavItem";
 import { NAV_ITEMS, SETTINGS_ITEM } from "./navConfig";
@@ -14,12 +13,9 @@ export function TopNav() {
   const isEditing = usePageLayoutStore((s) => s.isEditing(activeView));
 
   return (
-    <header
-      data-tauri-drag-region
-      className="flex h-14 shrink-0 items-center gap-4 border-b border-edge bg-surface px-6"
-    >
+    <header className="flex h-14 shrink-0 items-center gap-4 border-b border-edge bg-surface px-6">
       <div className="w-[160px] shrink-0">
-        <Logo extra={<VersionPopover />} />
+        <Logo />
       </div>
 
       <nav className="flex flex-1 items-center gap-1 overflow-x-auto">

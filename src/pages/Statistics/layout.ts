@@ -4,6 +4,6 @@ export const statisticsLayoutDefinition: PageLayoutDefinition = {
   defaultMode: "stack",
   sections: [
     { id: "header", title: "标题" },
-    { id: "tabs", title: "统计面板" },
+    { id: "endpoint", title: "端点统计" },
   ],
 };
