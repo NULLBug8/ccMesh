@@ -1,8 +1,8 @@
 use std::time::{Duration, Instant};
 
+use crate::runtime::{AppHandle, State};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use crate::runtime::{AppHandle, State};
 
 use crate::error::{AppError, AppResult};
 use crate::models::endpoint::{
@@ -651,6 +651,11 @@ fn is_usable_balance_ai_sample(raw: &str) -> bool {
     {
         return false;
     }
+    if json.get("data").is_some_and(|value| value.is_null())
+        && (json.get("msg").is_some() || json.get("message").is_some())
+    {
+        return false;
+    }
     true
 }
 
@@ -721,6 +726,9 @@ async fn run_balance_query(
             if label.is_empty() {
                 return None;
             }
+            if !balance_limit_expression_has_positive_cap(&json, &limit.balance_path) {
+                return None;
+            }
             let balance = json_path_value(&json, &limit.balance_path);
             let used = json_path_value(&json, &limit.used_path);
             let expires_at = json_path_value(&json, &limit.expires_at_path);
@@ -741,7 +749,7 @@ async fn run_balance_query(
     } else if status >= 400 {
         format!("余额接口返回 HTTP {status}")
     } else {
-        "余额响应中未找到余额字段".to_string()
+        balance_missing_field_message(&json, &raw)
     };
 
     Ok(BalanceQueryResult {
@@ -756,6 +764,57 @@ async fn run_balance_query(
         message,
         raw,
     })
+}
+
+fn balance_limit_expression_has_positive_cap(json: &serde_json::Value, path: &str) -> bool {
+    let trimmed = path.trim();
+    let Some((cap_operand, _)) = trimmed.split_once(" - ") else {
+        return true;
+    };
+    json_path_number_operand(json, cap_operand).is_some_and(|cap| cap > 0.0)
+}
+
+fn balance_missing_field_message(json: &serde_json::Value, raw: &str) -> String {
+    let trimmed = raw.trim();
+    let lowered = trimmed.to_ascii_lowercase();
+    if lowered.starts_with("<!doctype") || lowered.starts_with("<html") {
+        return "余额接口返回 HTML 页面，可能是余额路径不正确、需要网页登录态或被站点风控拦截"
+            .into();
+    }
+    if let Some(reason) = extract_json_message_field(json) {
+        return format!("余额接口返回: {reason}");
+    }
+    "余额响应中未找到余额字段".to_string()
+}
+
+fn extract_json_message_field(json: &serde_json::Value) -> Option<String> {
+    let candidates = [
+        json.pointer("/error/message"),
+        json.pointer("/message"),
+        json.pointer("/msg"),
+        json.pointer("/error"),
+    ];
+    for candidate in candidates.into_iter().flatten() {
+        if let Some(message) = candidate.as_str() {
+            let message = strip_trace_suffix(message);
+            if !message.is_empty() {
+                return Some(message);
+            }
+        }
+    }
+    None
+}
+
+fn should_try_balance_presets(result: &BalanceQueryResult) -> bool {
+    !result.success
+}
+
+fn mark_balance_template_matched(
+    mut result: BalanceQueryResult,
+    template_id: &str,
+) -> BalanceQueryResult {
+    result.message = format!("{}（已自动匹配余额模板: {template_id}）", result.message);
+    result
 }
 
 fn classify_balance_probe_results(results: Vec<BalanceProbeTemplateResult>) -> BalanceProbeResult {
@@ -1106,7 +1165,27 @@ pub async fn query_endpoint_balance(
     if !cfg.enabled {
         return Err(AppError::InvalidArgument("该端点未启用余额查询模板".into()));
     }
-    query_endpoint_balance_with_config(state, ep, cfg).await
+    let first = query_endpoint_balance_with_config(state.clone(), ep.clone(), cfg).await?;
+    if !should_try_balance_presets(&first) {
+        return Ok(first);
+    }
+
+    for preset in balance_query_presets() {
+        let template_id = preset.template_id.clone();
+        let result =
+            query_endpoint_balance_with_config(state.clone(), ep.clone(), preset.clone()).await?;
+        if result.success {
+            let conn = state.db_pool.get()?;
+            let req = UpdateEndpointRequest {
+                balance_query: Some(preset),
+                ..Default::default()
+            };
+            let _ = endpoint_repo::update(&conn, ep.id, &req)?;
+            return Ok(mark_balance_template_matched(result, &template_id));
+        }
+    }
+
+    Ok(first)
 }
 
 pub async fn test_endpoint_balance_query(
@@ -1374,17 +1453,13 @@ fn raw_upstream_endpoint_error(
     let body = body.trim();
     let path = endpoint_test_url_path(url);
     if status == 200 && body.is_empty() {
-        return format!(
-            "{path}，模型: {model} 测试失败: 请求成功但未返回实际流响应结果"
-        );
+        return format!("{path}，模型: {model} 测试失败: 请求成功但未返回实际流响应结果");
     }
     let reason = extract_upstream_error_message(body)
         .unwrap_or_else(|| truncate_endpoint_message_body(body, 160));
     if status == 200 {
         if reason.is_empty() {
-            return format!(
-                "{path}，模型: {model} 测试失败: 请求成功但未返回实际流响应结果"
-            );
+            return format!("{path}，模型: {model} 测试失败: 请求成功但未返回实际流响应结果");
         }
         return format!("{path}，模型: {model} 测试失败: {reason}");
     }
@@ -1497,7 +1572,12 @@ fn extract_upstream_error_message_from_json(body: &str) -> Option<String> {
     None
 }
 
-fn upstream_read_error_endpoint_message(kind: &str, url: &str, model: &str, _error: &str) -> String {
+fn upstream_read_error_endpoint_message(
+    kind: &str,
+    url: &str,
+    model: &str,
+    _error: &str,
+) -> String {
     raw_upstream_endpoint_error(kind, 200, url, model, "")
 }
 
@@ -1984,10 +2064,8 @@ pub async fn test_endpoint(
                         response_body: Some(text),
                         error_message: None,
                     });
-                    last_message = format!(
-                        "{}，模型: {model} 测试成功",
-                        endpoint_test_url_path(&url),
-                    );
+                    last_message =
+                        format!("{}，模型: {model} 测试成功", endpoint_test_url_path(&url),);
                     break;
                 }
 
@@ -2275,6 +2353,71 @@ mod balance_probe_tests {
     }
 
     #[test]
+    fn classify_probe_filters_data_null_error_samples_from_ai() {
+        let result = classify_balance_probe_results(vec![probe_result_with_sample(
+            "newapi",
+            r#"{"code":0,"data":null,"msg":"该接口未接入公益站独立网关，旧转发链路已关闭"}"#,
+        )]);
+
+        assert_eq!(result.status, "allFailed");
+        assert!(result.usable_samples.is_empty());
+    }
+
+    #[test]
+    fn balance_missing_field_message_prefers_upstream_json_message() {
+        let json: serde_json::Value = serde_json::from_str(
+            r#"{"message":"Unauthorized, invalid access token","success":false}"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            balance_missing_field_message(
+                &json,
+                r#"{"message":"Unauthorized, invalid access token","success":false}"#
+            ),
+            "余额接口返回: Unauthorized, invalid access token"
+        );
+    }
+
+    #[test]
+    fn balance_missing_field_message_reports_html_response() {
+        let raw = "<!doctype html><html><body>login</body></html>";
+
+        assert_eq!(
+            balance_missing_field_message(&serde_json::Value::Null, raw),
+            "余额接口返回 HTML 页面，可能是余额路径不正确、需要网页登录态或被站点风控拦截"
+        );
+    }
+
+    #[test]
+    fn zero_limit_expression_is_not_displayable_quota() {
+        let json: serde_json::Value = serde_json::from_str(
+            r#"{
+              "subscription": {
+                "daily_limit_usd": 60,
+                "daily_usage_usd": 40,
+                "monthly_limit_usd": 0,
+                "monthly_usage_usd": 319
+              }
+            }"#,
+        )
+        .unwrap();
+
+        assert!(balance_limit_expression_has_positive_cap(
+            &json,
+            "$.subscription.daily_limit_usd - $.subscription.daily_usage_usd"
+        ));
+        assert!(!balance_limit_expression_has_positive_cap(
+            &json,
+            "$.subscription.monthly_limit_usd - $.subscription.monthly_usage_usd"
+        ));
+        assert!(balance_limit_expression_has_positive_cap(
+            &json,
+            "$.rate_limits[0].remaining"
+        ));
+    }
+
+    #[test]
     fn json_path_supports_array_index_and_subtraction() {
         let json: serde_json::Value = serde_json::from_str(
             r#"{
@@ -2301,6 +2444,24 @@ mod balance_probe_tests {
             json_path_value(&json, "$.subscription.weekly_usage_usd / 2").as_deref(),
             Some("102.125")
         );
+    }
+
+    #[test]
+    fn saved_balance_query_without_extracted_fields_should_try_presets() {
+        let result = BalanceQueryResult {
+            success: false,
+            status: 200,
+            latency_ms: 12,
+            balance: None,
+            currency: None,
+            used: None,
+            expires_at: None,
+            limits: Vec::new(),
+            message: "余额响应中未找到余额字段".into(),
+            raw: r#"{"remaining":5.5,"unit":"USD"}"#.into(),
+        };
+
+        assert!(should_try_balance_presets(&result));
     }
 
     #[test]
@@ -2444,8 +2605,11 @@ mod balance_probe_tests {
 
     #[test]
     fn endpoint_test_openai_probe_uses_non_stream_to_avoid_empty_stream_false_negative() {
-        let (url, body, marker) =
-            endpoint_test_probe("https://example.com", UpstreamFormat::OpenAiChat, "qwen3.7-max");
+        let (url, body, marker) = endpoint_test_probe(
+            "https://example.com",
+            UpstreamFormat::OpenAiChat,
+            "qwen3.7-max",
+        );
 
         assert_eq!(url, "https://example.com/v1/chat/completions");
         assert_eq!(marker, None);
@@ -2454,10 +2618,8 @@ mod balance_probe_tests {
 
     #[test]
     fn endpoint_test_timeout_message_does_not_claim_connection_failure() {
-        let message = endpoint_timeout_error_message(
-            "https://example.com/v1/responses",
-            "qwen3.7-max",
-        );
+        let message =
+            endpoint_timeout_error_message("https://example.com/v1/responses", "qwen3.7-max");
 
         assert!(message.contains("未在测试超时时间内返回实际流响应结果"));
         assert!(!message.contains("无法连接"));
@@ -2592,14 +2754,18 @@ data: {"code":"InvalidParameter","message":"Missing required parameter: 'workspa
 
     #[test]
     fn stream_probe_requires_marker_and_actual_output() {
-        let empty_completed = "event: response.completed\ndata: {\"type\":\"response.completed\"}\n\n";
+        let empty_completed =
+            "event: response.completed\ndata: {\"type\":\"response.completed\"}\n\n";
         assert!(!stream_probe_has_actual_output(
             empty_completed,
             "response.completed"
         ));
 
         let with_delta = "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"OK\"}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\"}\n\n";
-        assert!(stream_probe_has_actual_output(with_delta, "response.completed"));
+        assert!(stream_probe_has_actual_output(
+            with_delta,
+            "response.completed"
+        ));
     }
 
     #[test]
