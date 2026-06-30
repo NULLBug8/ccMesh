@@ -89,7 +89,7 @@ pub struct ProxyState {
     pub client: reqwest::Client,
     /// 全局代理 client（配置了 proxy_url 时构建；端点 use_proxy 为真时使用）。
     pub proxy_client: Option<reqwest::Client>,
-    /// 伪装 UA：转发到 OpenAI 端点时覆盖 User-Agent（空=透传客户端）。
+    /// 伪装 UA：转发到 OpenAI/Codex 端点时覆盖 User-Agent（空/无效=使用内置新版 Codex UA）。
     pub openai_ua: Mutex<String>,
     /// 伪装 UA：转发到 Claude 端点时覆盖 User-Agent（空=透传客户端）。
     pub claude_cli_ua: Mutex<String>,
@@ -209,7 +209,9 @@ fn build_forward_headers(
 ) -> Vec<(String, String)> {
     let ua_format = UpstreamFormat::from_transformer_name(&ep.transformer);
     let ua_override = match ua_format {
-        UpstreamFormat::OpenAiChat | UpstreamFormat::OpenAiResponses => current_openai_ua(st),
+        UpstreamFormat::OpenAiChat | UpstreamFormat::OpenAiResponses => {
+            effective_openai_ua(&current_openai_ua(st))
+        }
         UpstreamFormat::Claude => current_claude_ua(st),
     };
     let ua_override = ua_override.trim().to_string();
@@ -350,6 +352,12 @@ fn filter_unavailable_by_test_status(enabled: &[Endpoint]) -> Vec<Endpoint> {
 
 fn current_openai_ua(st: &ProxyState) -> String {
     st.openai_ua.lock().unwrap().clone()
+}
+
+fn effective_openai_ua(value: &str) -> String {
+    crate::utils::ua::usable_openai_codex_ua(value)
+        .map(str::to_string)
+        .unwrap_or_else(crate::utils::ua::codex_probe_ua)
 }
 
 fn current_claude_ua(st: &ProxyState) -> String {
@@ -1277,10 +1285,12 @@ async fn send_upstream(
     };
     let mut rb = client.request(rmethod, url);
 
-    // 伪装 UA：按上游格式取配置；非空则覆盖客户端 UA，为空则纯透传（客户端 UA 随下方头部复制原样转发）
+    // 伪装 UA：OpenAI/Codex 端点使用配置值；空/无效时使用内置新版 Codex UA，避免站点拒绝非官方/旧客户端。
     let ua_format = UpstreamFormat::from_transformer_name(&ep.transformer);
     let ua_override = match ua_format {
-        UpstreamFormat::OpenAiChat | UpstreamFormat::OpenAiResponses => current_openai_ua(st),
+        UpstreamFormat::OpenAiChat | UpstreamFormat::OpenAiResponses => {
+            effective_openai_ua(&current_openai_ua(st))
+        }
         UpstreamFormat::Claude => current_claude_ua(st),
     };
     let ua_override = ua_override.trim().to_string();
@@ -1290,7 +1300,7 @@ async fn send_upstream(
         && !headers.contains_key("originator");
 
     // 复制客户端头部（剔除 Host / Content-Length / Accept-Encoding / 客户端凭证 / 控制头；
-    // 仅在配置了伪装 UA 时剔除客户端 user-agent，否则原样透传客户端 UA）
+    // 使用伪装 UA 时剔除客户端 user-agent）
     for (k, v) in headers.iter() {
         let kn = k.as_str().to_ascii_lowercase();
         if kn == "host"
@@ -1309,7 +1319,7 @@ async fn send_upstream(
         }
     }
 
-    // 配置了伪装 UA 才覆盖；未配置时客户端 UA 已在上面原样透传
+    // 使用伪装 UA 覆盖客户端 UA。
     if override_ua {
         rb = rb.header("user-agent", ua_override);
     }
@@ -1713,6 +1723,13 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn empty_openai_ua_uses_current_codex_probe_ua() {
+        let ua = super::effective_openai_ua("");
+
+        assert!(ua.starts_with("codex_cli_rs/0.142.4 "));
     }
 
     #[test]

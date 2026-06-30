@@ -31,7 +31,7 @@ pub fn usable_openai_codex_ua(value: &str) -> Option<&str> {
 /// 模拟 Codex CLI 的 UA：`codex_cli_rs/<version> (<OS>; <arch>) vscode/<version>`，OS/arch 取运行环境。
 pub fn codex_probe_ua() -> String {
     format!(
-        "codex_cli_rs/0.114.0 ({}; {}) vscode/1.111.0",
+        "codex_cli_rs/0.142.4 ({}; {}) vscode/1.111.0",
         std::env::consts::OS,
         std::env::consts::ARCH
     )
