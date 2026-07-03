@@ -7,8 +7,7 @@ import { NavItem } from "./NavItem";
 import { NAV_ITEMS, SETTINGS_ITEM } from "./navConfig";
 
 async function logout() {
-  await fetch("/__auth/logout", { method: "POST" }).catch(() => null);
-  window.location.href = "/";
+  window.location.href = "/__auth/logout";
 }
 
 export function TopNav() {

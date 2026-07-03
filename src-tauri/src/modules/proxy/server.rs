@@ -124,7 +124,10 @@ fn build_router(state: Arc<ProxyState>) -> Router {
             "/__auth/login",
             get(crate::modules::auth::login_page).post(crate::modules::auth::login),
         )
-        .route("/__auth/logout", post(crate::modules::auth::logout))
+        .route(
+            "/__auth/logout",
+            get(crate::modules::auth::logout).post(crate::modules::auth::logout),
+        )
         .merge(protected)
         .layer(DefaultBodyLimit::max(PROXY_REQUEST_BODY_LIMIT_BYTES))
         .with_state(state)

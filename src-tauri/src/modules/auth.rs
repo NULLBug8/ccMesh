@@ -135,13 +135,16 @@ pub async fn login(Json(body): Json<LoginRequest>) -> Response {
 }
 
 pub async fn logout() -> Response {
-    let mut response = Json(json!({ "ok": true })).into_response();
+    let mut response = (StatusCode::FOUND, "").into_response();
     response.headers_mut().insert(
         header::SET_COOKIE,
         HeaderValue::from_static(
             "ccmesh_admin_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
         ),
     );
+    response
+        .headers_mut()
+        .insert(header::LOCATION, HeaderValue::from_static("/"));
     response
 }
 
