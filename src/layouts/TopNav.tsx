@@ -1,10 +1,15 @@
-﻿import { PanelLeftIcon, PanelsTopLeftIcon } from "lucide-react";
+﻿import { LogOutIcon, PanelLeftIcon, PanelsTopLeftIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ThemeToggle, Logo, LangToggle } from "@/components/common";
 import { useLayoutStore, usePageLayoutStore } from "@/stores";
 import { NavItem } from "./NavItem";
 import { NAV_ITEMS, SETTINGS_ITEM } from "./navConfig";
+
+async function logout() {
+  await fetch("/__auth/logout", { method: "POST" }).catch(() => null);
+  window.location.href = "/";
+}
 
 export function TopNav() {
   const setNavMode = useLayoutStore((s) => s.setNavMode);
@@ -44,6 +49,9 @@ export function TopNav() {
         </Button>
         <ThemeToggle />
         <LangToggle />
+        <Button variant="ghost" size="icon" aria-label="退出登录" onClick={logout}>
+          <LogOutIcon className="size-4" />
+        </Button>
       </div>
     </header>
   );

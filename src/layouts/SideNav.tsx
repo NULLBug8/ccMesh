@@ -1,6 +1,7 @@
-import {
+﻿import {
   ChevronLeftIcon,
   ChevronRightIcon,
+  LogOutIcon,
   PanelTopIcon,
   PanelsTopLeftIcon,
 } from "lucide-react";
@@ -12,6 +13,11 @@ import { cn } from "@/lib/utils";
 import { useLayoutStore, usePageLayoutStore } from "@/stores";
 import { NavItem } from "./NavItem";
 import { NAV_ITEMS, SETTINGS_ITEM } from "./navConfig";
+
+async function logout() {
+  await fetch("/__auth/logout", { method: "POST" }).catch(() => null);
+  window.location.href = "/";
+}
 
 export function SideNav() {
   const sidebarState = useLayoutStore((s) => s.sidebarState);
@@ -100,6 +106,14 @@ export function SideNav() {
               <TooltipContent side="right">
                 {collapsed ? "展开侧边栏" : "折叠侧边栏"}
               </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" aria-label="退出登录" onClick={logout}>
+                  <LogOutIcon className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">退出登录</TooltipContent>
             </Tooltip>
           </div>
         </div>

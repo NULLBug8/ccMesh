@@ -58,10 +58,12 @@ pnpm server:build
 pnpm install
 pnpm build
 pnpm server:build
-CCMESH_PORT=3999 CCMESH_DATA_DIR=/var/lib/ccmesh ./src-tauri/target/release/ccmesh
+CCMESH_PORT=3999 CCMESH_DATA_DIR=/var/lib/ccmesh CCMESH_ADMIN_TOKEN=change-me ./src-tauri/target/release/ccmesh
 ```
 
 访问：`http://服务器IP:3999/`。
+
+公网部署必须设置 `CCMESH_ADMIN_TOKEN`。未设置时服务会锁定控制台和代理接口，避免暴露任何业务信息。
 
 ## 验证
 

@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use axum::extract::{DefaultBodyLimit, State};
 use axum::http::HeaderMap;
+use axum::middleware::from_fn;
 use axum::routing::{get, post};
 use axum::{
     body::Bytes,
@@ -81,7 +82,7 @@ impl ProxyHandle {
 }
 
 fn build_router(state: Arc<ProxyState>) -> Router {
-    Router::new()
+    let protected = Router::new()
         .route("/", get(crate::commands::web_admin::static_asset_root))
         .route(
             "/assets/{*path}",
@@ -116,6 +117,15 @@ fn build_router(state: Arc<ProxyState>) -> Router {
         .route("/v1/models", get(models_route))
         .route("/v1/messages/count_tokens", post(count_tokens_route))
         .fallback(handle_proxy)
+        .layer(from_fn(crate::modules::auth::require_admin_auth));
+
+    Router::new()
+        .route(
+            "/__auth/login",
+            get(crate::modules::auth::login_page).post(crate::modules::auth::login),
+        )
+        .route("/__auth/logout", post(crate::modules::auth::logout))
+        .merge(protected)
         .layer(DefaultBodyLimit::max(PROXY_REQUEST_BODY_LIMIT_BYTES))
         .with_state(state)
 }

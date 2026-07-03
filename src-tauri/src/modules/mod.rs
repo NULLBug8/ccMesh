@@ -1,3 +1,4 @@
+pub mod auth;
 pub mod logs;
 pub mod models_cache;
 pub mod models_probe;
