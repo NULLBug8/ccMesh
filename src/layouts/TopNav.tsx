@@ -48,8 +48,15 @@ export function TopNav() {
         </Button>
         <ThemeToggle />
         <LangToggle />
-        <Button variant="ghost" size="icon" aria-label="退出登录" onClick={logout}>
+        <Button
+          variant="outline"
+          size="sm"
+          aria-label="退出登录"
+          onClick={logout}
+          className="border-danger/40 text-danger hover:bg-danger/10 hover:text-danger"
+        >
           <LogOutIcon className="size-4" />
+          <span className="ml-1.5">退出登录</span>
         </Button>
       </div>
     </header>

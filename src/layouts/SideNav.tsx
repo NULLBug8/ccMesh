@@ -108,8 +108,18 @@ export function SideNav() {
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label="退出登录" onClick={logout}>
+                <Button
+                  variant="outline"
+                  size={collapsed ? "icon" : "sm"}
+                  aria-label="退出登录"
+                  onClick={logout}
+                  className={cn(
+                    "border-danger/40 text-danger hover:bg-danger/10 hover:text-danger",
+                    !collapsed && "px-2.5",
+                  )}
+                >
                   <LogOutIcon className="size-4" />
+                  {!collapsed ? <span className="ml-1.5">退出</span> : null}
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="right">退出登录</TooltipContent>
