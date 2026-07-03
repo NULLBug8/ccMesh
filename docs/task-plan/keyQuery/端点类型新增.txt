@@ -1,0 +1,30 @@
+
+新任务：参考资料目录 E:\myCode\reference data
+
+1: 端点类型新增（codex）
+该端点获取模型资源也同其他端点一样。
+
+2: 添加路由/v1/response 实现下列
+请求转发：
+Responses API → Chat Completions
+Responses API → Responses API （透传）
+
+3: 该转发规则也需要同其他接口一样，支持代理开关，支持模型映射功能
+Responses 不做 对 Claude 协议支持，只需要需要实现上述转发即可
+
+4: 需要进行前期调研
+收集和整理 codex 的参数配置
+https://docs.aimlapi.com/api-references/text-models-llm/openai/gpt-5.3-codex
+生成网站的格式 Markdown 文档，使用 json 格式标标注完整参数。
+
+5 收集已经实现的项目资料  E:\myCode\reference data\moon-bridge
+moon-bridge 先做技术调研和验证报告
+
+6 接着直接对照  E:\myCode\reference data\EchoBird
+EchoBird 直接依据本项目架构进行功能对照改变，实现功能编码
+
+6 然后使用
+moon-bridge 先做技术调研和验证报告，去审核和校对
+实现的功能的正确性和准确性，注意实现路径和，实现功能的差异。
+
+路线原因：这样是因为 EchoBird 和当前项目架构使用语言一致，可以快速迭代实现，然后用 moon-bridge 进行补充完善。

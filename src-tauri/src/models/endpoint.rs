@@ -1,0 +1,169 @@
+use serde::{Deserialize, Serialize};
+
+/// 单条模型映射：入站模型名 `from` → 出站（上游真实）模型名 `to`。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelMapping {
+    pub from: String,
+    pub to: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct BalanceExtraction {
+    pub balance_path: String,
+    pub currency_path: String,
+    pub used_path: String,
+    pub expires_at_path: String,
+    pub limits: Vec<BalanceLimitExtraction>,
+}
+
+impl Default for BalanceExtraction {
+    fn default() -> Self {
+        Self {
+            balance_path: "$.balance".into(),
+            currency_path: "$.currency".into(),
+            used_path: String::new(),
+            expires_at_path: String::new(),
+            limits: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct BalanceLimitExtraction {
+    pub label: String,
+    pub balance_path: String,
+    pub used_path: String,
+    pub expires_at_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BalanceHeader {
+    pub name: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct BalanceQueryConfig {
+    #[serde(default = "default_balance_query_enabled")]
+    pub enabled: bool,
+    pub template_id: String,
+    pub method: String,
+    pub path: String,
+    pub headers: Vec<BalanceHeader>,
+    pub body: String,
+    pub extraction: BalanceExtraction,
+}
+
+impl Default for BalanceQueryConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            template_id: "openai-credit-grants".into(),
+            method: "GET".into(),
+            path: "/dashboard/billing/credit_grants".into(),
+            headers: Vec::new(),
+            body: String::new(),
+            extraction: BalanceExtraction::default(),
+        }
+    }
+}
+
+fn default_balance_query_enabled() -> bool {
+    true
+}
+
+/// 端点（上游 API 提供方）。对应 `endpoints` 表。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Endpoint {
+    pub id: i64,
+    pub name: String,
+    pub api_url: String,
+    pub api_key: String,
+    /// 认证模式：api_key（默认）/ auth_token 等。
+    pub auth_mode: String,
+    pub enabled: bool,
+    /// 是否经全局代理出网（代理地址见 AppConfig.proxy_url）。
+    pub use_proxy: bool,
+    /// 转换器名：claude / openai。
+    pub transformer: String,
+    /// 可选锁定模型：非空则强制覆盖客户端请求的 model（专用型端点）；空则透传。
+    pub model: String,
+    /// 对外暴露/已选的模型清单（聚合型端点，供 /v1/models 公布与 UI 展示）。
+    pub models: Vec<String>,
+    /// 点亮（对外公布）的模型子集：`models` 的子集。空数组表示全部公布（向后兼容旧端点）；
+    /// 非空时仅这些模型对外公布与可路由，其余视为保留不公布。
+    pub active_models: Vec<String>,
+    /// 入站→出站模型映射。客户端用入站名请求 → 路由匹配 + 改写为出站名转发上游。
+    pub model_mappings: Vec<ModelMapping>,
+    /// 中转站余额查询模板配置。默认关闭，用户可在端点页或余额页自定义。
+    pub balance_query: BalanceQueryConfig,
+    pub remark: String,
+    pub sort_order: i64,
+    /// 测试状态：unknown / available / unavailable。
+    pub test_status: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateEndpointRequest {
+    pub name: String,
+    pub api_url: String,
+    #[serde(default)]
+    pub api_key: String,
+    #[serde(default = "default_auth_mode")]
+    pub auth_mode: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub use_proxy: bool,
+    #[serde(default = "default_transformer")]
+    pub transformer: String,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub models: Vec<String>,
+    #[serde(default)]
+    pub active_models: Vec<String>,
+    #[serde(default)]
+    pub model_mappings: Vec<ModelMapping>,
+    #[serde(default)]
+    pub balance_query: BalanceQueryConfig,
+    #[serde(default)]
+    pub remark: String,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateEndpointRequest {
+    pub name: Option<String>,
+    pub api_url: Option<String>,
+    pub api_key: Option<String>,
+    pub auth_mode: Option<String>,
+    pub enabled: Option<bool>,
+    pub use_proxy: Option<bool>,
+    pub transformer: Option<String>,
+    pub model: Option<String>,
+    pub models: Option<Vec<String>>,
+    pub active_models: Option<Vec<String>>,
+    pub model_mappings: Option<Vec<ModelMapping>>,
+    pub balance_query: Option<BalanceQueryConfig>,
+    pub remark: Option<String>,
+}
+
+fn default_true() -> bool {
+    true
+}
+fn default_auth_mode() -> String {
+    "api_key".to_string()
+}
+fn default_transformer() -> String {
+    "claude".to_string()
+}

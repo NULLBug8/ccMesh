@@ -1,0 +1,5 @@
+{
+  "enabledPlugins": {
+    "task-plan-workflow@task-plan-mp": true
+  }
+}

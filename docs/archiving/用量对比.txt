@@ -1,0 +1,79 @@
+opene ai 
+"usage": {
+        "input_tokens": 13319,
+        "output_tokens": 29,
+        "total_tokens": 13348,
+        "cache_read_input_tokens": 8192,
+        "reasoning_output_tokens": 0
+      }
+
+claude
+"usage": {
+        "input_tokens": 56,
+        "output_tokens": 94,
+        "cache_read_input_tokens": 192
+    }
+
+============================================================
+两种格式 input_tokens 语义差异（token 用量统计关键点）
+============================================================
+
+【OpenAI 风格】（codex / openai chat / openai responses）
+- input_tokens / prompt_tokens = "总输入"，**已包含** cache_read（cached_tokens）
+- 即：13319 = 净输入(5127) + 缓存读取(8192)
+- total_tokens = input_tokens + output_tokens = 13319 + 29 = 13348
+  （total 里**不额外加** cache_read，因为 input 已经含了）
+- 字段位置：
+  · chat:        usage.prompt_tokens + prompt_tokens_details.cached_tokens
+  · responses:   usage.input_tokens  + cache_read_input_tokens / input_tokens_details.cached_tokens
+
+【Claude 风格】
+- input_tokens = "净输入"，**不含** cache_creation / cache_read
+- 三者相互独立：input_tokens(56) + output_tokens(94) + cache_read(192) 各算各的
+- 合计 = input_tokens + output_tokens + cache_creation_input_tokens + cache_read_input_tokens
+
+============================================================
+问题现象（修复前）
+============================================================
+
+网关 usage.rs 对两种风格都直接把原始 input_tokens 存为 input 字段，
+前端合计公式为：input + output + cache_creation + cache_read
+
+→ 对 Claude 正确（input 不含 cache，四项相加即总量）
+→ 对 OpenAI **双重计算**：input(含cache) + cache_read = 把缓存部分算了两遍
+
+举例（上面 OpenAI 这条）：
+  错误：13319(input) + 29(output) + 8192(cache_read) = 21540  ← 虚高
+  正确：5127(净input) + 29(output) + 8192(cache_read) = 13348 = total_tokens
+
+============================================================
+修复方案（usage.rs 后端归一化）
+============================================================
+
+统一 input 字段为"非缓存净输入"语义（对齐 Claude 风格）：
+
+  net_input(raw_input, cache_read) = max(raw_input - cache_read, 0)
+
+- OpenAiChat / OpenAiResponses：input = net_input(prompt_tokens, cache_read)
+- Claude：保持不变（input_tokens 本就是净输入）
+- 流式 UsageAccumulator 同步归一化
+
+修复后前端合计公式 input + output + cache_creation + cache_read 对所有端点
+类型都正确，且与上游 total_tokens 一致。
+
+参考测试：modules::usage::tests::responses_input_excludes_cache_read
+（input=13319, cache_read=8192 → 净 input=5127，合计=13348）
+
+============================================================
+注意事项
+============================================================
+
+1. 历史数据：已落库的旧 OpenAI 记录 input_tokens 仍是"含 cache"的旧值，
+   新记录是归一化后的净输入。新旧混存时历史 OpenAI 记录合计仍偏高，
+   如需彻底一致需一次性迁移：input_tokens = max(input_tokens - cache_read_tokens, 0)。
+
+2. cache_creation：OpenAI 无此概念，始终为 0；Claude 的 cache_creation_input_tokens
+   独立于 input_tokens，不受归一化影响。
+
+3. 计费口径：OpenAI 端 input 数值会变小（扣掉 cache 部分），但总 token 不变
+  （cache_read 单独累加），合计与上游 total_tokens 一致。

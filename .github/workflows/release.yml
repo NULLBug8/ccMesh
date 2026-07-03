@@ -1,0 +1,128 @@
+name: Release
+
+# 触发方式：
+# 1) 推送形如 v1.2.3 的 tag 时自动构建并创建 Release 草稿
+# 2) 手动 workflow_dispatch（方便首次联调，不创建 Release，仅验证三平台能否构建）
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+# 创建 Release / 上传产物需要写权限
+permissions:
+  contents: write
+
+# CI 里关闭增量编译：增量缓存巨大且跨 runner 无用，关掉可减小缓存、加快干净构建。
+env:
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: short
+
+concurrency:
+  group: '${{ github.workflow }}-${{ github.ref }}'
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS 通用二进制：一个 .dmg 同时覆盖 Intel 与 Apple Silicon
+          - platform: macos-latest
+            args: '--target universal-apple-darwin'
+            rust_targets: 'aarch64-apple-darwin,x86_64-apple-darwin'
+          # Linux x86_64：产出 deb / rpm / AppImage（targets: all）
+          - platform: ubuntu-22.04
+            args: ''
+            rust_targets: ''
+          # Windows x86_64：产出 msi / nsis
+          - platform: windows-latest
+            args: ''
+            rust_targets: ''
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm
+
+      # 固定 Rust 版本（不用浮动 @stable）：版本一变缓存 key 就失效→全量重编。
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.96.0'
+          targets: ${{ matrix.rust_targets }}
+
+      # Rust 编译缓存。发版(tag)构建只读不写（save-if 仅对 master 成立）；
+      # 热缓存由 master 上的 ci.yml 维护，tag 构建从 master 缓存恢复（学 clash-verge-rev）。
+      # key 必须与 ci.yml 完全一致，否则跨 workflow 命中不了。
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+          prefix-key: 'v1-rust'
+          key: 'release-${{ matrix.platform }}'
+          cache-all-crates: true
+          save-if: ${{ github.ref == 'refs/heads/master' }}
+
+      # Linux 构建依赖：
+      # - libwebkit2gtk-4.1-dev：Tauri 2 的 WebView 运行/编译依赖
+      # - libayatana-appindicator3-dev：系统托盘（本项目 tray.rs 需要）
+      # - librsvg2-dev / patchelf：图标渲染与 AppImage 打包
+      # 注意：本项目 reqwest 使用 rustls，无需安装 OpenSSL/libssl。
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 更新签名（updater）。当 tauri.conf.json 的 createUpdaterArtifacts 设为 true 时生效；
+          # 未配置 secret 时不影响安装包构建，只是不产出 .sig 更新签名。
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # macOS 代码签名：需要付费 Apple Developer 账号（$99/年）。
+          # 未配置时 macOS 产出未签名 .dmg，Windows/Linux 不受影响。
+          # 有账号后取消注释并配置对应 Secrets：
+          # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          # APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # APPLE_ID: ${{ secrets.APPLE_ID }}
+          # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          # 用项目内的 @tauri-apps/cli，等价执行 `pnpm tauri build <args>`
+          # （本项目 package.json 的 build 脚本仅构建前端，故必须显式指向 `pnpm tauri`）
+          tauriScript: pnpm tauri
+          args: ${{ matrix.args }}
+          # 仅在 tag 触发时创建 Release；手动触发只验证构建
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          releaseName: 'ccMesh ${{ github.ref_name }}'
+          releaseBody: '查看下方 Assets 下载对应平台安装包。'
+          releaseDraft: true
+          prerelease: false
+          # 生成并上传 latest.json（updater 更新源），需配合仓库 Secret TAURI_SIGNING_PRIVATE_KEY
+          includeUpdaterJson: true
